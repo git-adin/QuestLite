@@ -1,0 +1,16 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+    <!-- MapCanvas installs OnEnter/OnLeave BEFORE calling the mixin OnLoad.
+         Mouse input must be enabled on the template, not only in Lua. -->
+    <!-- Forever provides MapCanvasPinMixin in Lua, but no MapCanvasPinTemplate
+         XML node. Our mixin already includes the complete map-pin behavior. -->
+    <Frame name="QuestLitePinTemplate" mixin="QuestLitePinMixin" enableMouse="true" virtual="true">
+        <Layers>
+            <Layer level="OVERLAY">
+                <Texture parentKey="Icon" setAllPoints="true"/>
+                <FontString parentKey="Count" inherits="GameFontNormalSmall">
+                    <Anchors><Anchor point="BOTTOMRIGHT" x="3" y="-3"/></Anchors>
+                </FontString>
+            </Layer>
+        </Layers>
+    </Frame>
+</Ui>
