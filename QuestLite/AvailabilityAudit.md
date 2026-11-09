@@ -82,3 +82,16 @@ the generated change and rerun tests when updating either reference addon.
 Policy references: Questie's `QuestieQuestBlacklist.lua`, `QuestieNPCBlacklist.lua`,
 holiday quest registrations and `QuestieProfessions.lua`. The addon retains its
 GPL license and source attribution.
+
+## Scout Support corrections (0.3.7)
+
+QuestieDB 1.0.13 omits prerequisite fields on Scout Support (98094) and Valuable
+Vantages (98095). Local strict-mode corrections require Battle of Hillsbrad
+part II (528) turned in before 98094, then 98094 turned in before 98095.
+[Scout Support's firsthand reports](https://www.wowhead.com/forever/quest=98094/scout-support)
+identify part II (the peasants), and its quest series lists
+[Valuable Vantages](https://www.wowhead.com/forever/quest=98095/valuable-vantages)
+as the follow-up. Darthalia's Orders is provided on acceptance, not a bag gate.
+Native minimum level, race/class restrictions and provider data are preserved.
+Both maps are tested before acceptance, at objective completion and after turn-in;
+confirmed offers cannot bypass the prerequisite. Broad view still permits browsing.

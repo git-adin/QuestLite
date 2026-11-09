@@ -18,6 +18,14 @@ function methods:RegisterEvent(e) self.events[e] = true end
 function methods:UnregisterEvent(e) self.events[e] = nil end
 function methods:SetScript(e,f) self.scripts[e] = f end
 function methods:GetScript(e) return self.scripts[e] end
+function methods:HookScript(e,f)
+    local old=self.scripts[e]
+    self.scripts[e]=function(...) if old then old(...) end; f(...) end
+end
+function methods:RegisterForClicks(...) self.clicks={...} end
+function methods:RegisterForDrag(...) self.drags={...} end
+function methods:SetHighlightTexture(value) self.highlight=value end
+function methods:GetOwner() return self.owner end
 function methods:Show() self.shown = true end
 function methods:Hide() self.shown = false end
 function methods:IsShown() return self.shown end
@@ -55,7 +63,8 @@ function methods:GetWidth() return self.width or 140 end
 function methods:GetHeight() return self.height or 140 end
 function methods:SetSize(width,height) self.width,self.height=width,height end
 function methods:SetRotation() end
-function methods:SetVertexColor() end
+function methods:SetVertexColor(...) self.vertexColor={...} end
+function methods:SetDesaturated(value) self.desaturated=value end
 function methods:SetBlendMode() end
 function methods:ClearAllPoints() end
 function methods:SetParent() end

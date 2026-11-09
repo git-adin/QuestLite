@@ -141,7 +141,7 @@ local function Draw()
         pin.data, pin.ids = group, {}
         for id in pairs(group.quests) do pin.ids[#pin.ids + 1] = id end
         table.sort(pin.ids)
-        ns.SetMarkerIcon(pin.Icon, group.kind)
+        ns.SetMarkerIcon(pin.Icon, group.kind, group.quests)
         pin.Count:SetText(#pin.ids > 1 and tostring(#pin.ids) or "")
         pin:SetPoint("CENTER", Minimap, "CENTER", group.sx, group.sy)
         pin.screenX, pin.screenY = group.sx, group.sy
@@ -239,7 +239,8 @@ function ns.RequestMinimap(key)
                 nextLocations[#nextLocations + 1] = point
             end
             if kind == "turnin" then point.kind = "turnin" end
-            point.quests[questID] = {kind = kind, label = label or "", x = x, y = y, confirmed = confirmed}
+            point.quests[questID] = {kind = kind, label = label or "", x = x, y = y, confirmed = confirmed,
+                repeatable = ns.GetQuestSummary(questID).repeatable}
         end, Checkpoint, key)
         locations, zoneID, stateKey = nextLocations, id, key
     end)

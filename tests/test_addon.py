@@ -16,7 +16,7 @@ class AddonTests(unittest.TestCase):
         template = ET.parse(ROOT / 'QuestLite/Pins.xml').getroot()[0]
         self.lua.globals().pinTemplateMouseEnabled = template.attrib.get('enableMouse') == 'true'
         self.ns = self.lua.table(testing=True)
-        for name in ['Core.lua', 'Diagnostics.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'Database.lua', 'DropChances.lua', 'Map.lua', 'Minimap.lua', 'SoftTarget.lua', 'LootSparkles.lua']:
+        for name in ['Core.lua', 'Diagnostics.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'Database.lua', 'DropChances.lua', 'Map.lua', 'Minimap.lua', 'MinimapButton.lua', 'SoftTarget.lua', 'LootSparkles.lua']:
             self.lua.execute((ROOT / 'QuestLite' / name).read_text(encoding='utf-8'), 'QuestLite', self.ns)
         self.lua.globals().ns = self.ns
         self.lua.execute("Fire('ADDON_LOADED','QuestLite'); Fire('PLAYER_LOGIN')")
@@ -24,6 +24,123 @@ class AddonTests(unittest.TestCase):
 
     def check(self, code):
         self.lua.execute(code)
+
+    def test_repeatable_blue_icons_tooltips_and_reused_mixed_groups(self):
+        self.check(r"""
+            npcs[10]={name='Warsong Scout',spawns={[12]={{22,30}}}}
+            quests[6547]={name='Warsong Scout Update',questLevel=21,specialFlags=1,
+                startedBy={{10}},finishedBy={{10}}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(100)
+            local function Check(blue,turnin)
+                local world=WorldMapFrame.pins[1]
+                local mini=select(2,next(ns.testMinimapActive))
+                assert(world and mini)
+                local expected=turnin and 'ActiveQuestIcon' or 'AvailableQuestIcon'
+                for _,pin in ipairs({world,mini}) do
+                    assert(pin.Icon.texture=='Interface\\GossipFrame\\'..expected, 'Wrong marker glyph')
+                    assert(pin.Icon.desaturated==blue,'Wrong repeatable fallback colour')
+                    assert(pin.Icon.vertexColor[1]==(blue and .2 or 1),'Stale pooled marker tint')
+                end
+                world:OnMouseEnter()
+                assert(table.concat(QuestLiteTooltip.lines,' '):find('Repeatable | ',1,true))
+                mini:GetScript('OnEnter')(mini)
+                assert(table.concat(QuestLiteTooltip.lines,' '):find('Repeatable | ',1,true))
+                return world,mini
+            end
+            local world,mini=Check(true,false)
+            quests[2]={name='Regular quest',specialFlags=2,startedBy={{10}},finishedBy={{10}}}
+            ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            local updatedWorld,updatedMini=Check(false,false)
+            assert(updatedWorld==world and updatedMini==mini,'Mixed refresh replaced marker frames')
+            active={6547}; done[6547]=true; Fire('QUEST_LOG_UPDATE'); Tick(100)
+            Check(true,true) -- Regular pickup does not override the ready turn-in.
+            active={6547,2}; done[2]=true; Fire('QUEST_LOG_UPDATE'); Tick(100)
+            Check(false,true)
+            active={2}; Fire('QUEST_LOG_UPDATE'); Tick(100)
+            Check(false,true) -- Regular turn-in wins over repeatable pickup.
+            local texture=CreateFrame('Texture')
+            C_Texture={GetAtlasInfo=function() return {} end}
+            ns.SetMarkerIcon(texture,'pickup',{[1]={kind='pickup',repeatable=true}})
+            assert(texture.atlas=='Recurringavailablequesticon' and not texture.desaturated)
+            ns.SetMarkerIcon(texture,'turnin',{[1]={kind='turnin',repeatable=true}})
+            assert(texture.atlas=='Recurringactivequesticon' and texture.vertexColor[1]==1)
+            ns.SetMarkerIcon(texture,'pickup',{[2]={kind='pickup',repeatable=false}})
+            assert(texture.atlas=='QuestNormal','Reused blue marker did not restore normal atlas')
+            assert(ns.GetQuestSummary(6547).repeatable and not ns.GetQuestSummary(2).repeatable)
+        """)
+
+    def test_minimap_button_opens_options_saves_drag_and_hides_independently(self):
+        self.check("""
+            GameTooltip=CreateFrame("GameTooltip")
+            EnableMinimapMock(); ns.InitMinimapButton()
+            local button=ns.testMinimapButton
+            assert(button and button:IsShown() and ns.db.minimapButtonAngle==225)
+            local opened=0
+            Settings.OpenToCategory=function() opened=opened+1 end
+            button:GetScript('OnClick')(button)
+            assert(opened==1)
+            button:GetScript('OnEnter')(button)
+            assert(GameTooltip:IsShown() and GameTooltip:GetOwner()==button)
+            button:GetScript('OnLeave')(button)
+            assert(not GameTooltip:IsShown())
+            Minimap.GetEffectiveScale=function() return 2 end
+            Minimap.GetCenter=function() return 100,100 end
+            GetCursorPosition=function() return 200,400 end
+            button:GetScript('OnDragStart')(button)
+            button:GetScript('OnUpdate')(button)
+            assert(math.abs(ns.db.minimapButtonAngle-90)<.001)
+            button:GetScript('OnDragStop')(button)
+            assert(not button:GetScript('OnUpdate'))
+            settings.minimapButton:Change(false)
+            assert(not button:IsShown() and ns.db.minimap)
+            settings.minimapButton:Change(true)
+            assert(button:IsShown() and ns.db.minimapButtonAngle==90)
+            button:GetScript('OnDragStart')(button)
+            GetCursorPosition=function() return 0/0,400 end
+            button:GetScript('OnUpdate')(button)
+            assert(ns.db.minimapButtonAngle==90)
+            button:GetScript('OnHide')(button)
+            assert(not button:GetScript('OnUpdate'))
+            ns.db=nil; QuestLiteDB.minimapButtonAngle=0/0; ns.LoadSettings()
+            assert(ns.db.minimapButtonAngle==225)
+        """)
+
+    def test_main_map_options_button_standalone_and_shared_stack(self):
+        self.check("""
+            GameTooltip=CreateFrame('GameTooltip')
+            local button=WorldMapFrame.QuestLiteOptionsButton
+            assert(button and button.point[1]=='TOPLEFT')
+            local opened=0
+            Settings.OpenToCategory=function() opened=opened+1 end
+            button:GetScript('OnClick')(button)
+            assert(opened==1)
+            button:GetScript('OnEnter')(button)
+            assert(GameTooltip:IsShown() and GameTooltip:GetOwner()==button)
+            assert(#GameTooltip.lines==2,'World map tooltip advertised minimap dragging')
+            button:GetScript('OnHide')(button)
+            assert(not GameTooltip:IsShown())
+            local count=#frames; ns.InitMap(); assert(#frames==count)
+            settings.map:Change(false); settings.minimapButton:Change(false)
+            assert(WorldMapFrame.QuestLiteOptionsButton==button)
+            button:GetScript('OnClick')(button); assert(opened==2)
+            sharedLibrary={IsForever=true,Add=function(self,template,kind)
+                assert(template==nil and kind=='Button')
+                self.added=(self.added or 0)+1
+                self.button=CreateFrame(kind,nil,WorldMapFrame)
+                return self.button
+            end}
+            LibStub=function(name,silent)
+                assert(name=='Krowi_WorldMapButtons-1.4' and silent)
+                return sharedLibrary
+            end
+        """)
+        self.lua.execute((ROOT / 'QuestLite/Map.lua').read_text(encoding='utf-8'), 'QuestLite', self.ns)
+        self.check("""
+            ns.InitMap()
+            assert(sharedLibrary.added==1 and WorldMapFrame.QuestLiteOptionsButton==sharedLibrary.button)
+            assert(type(sharedLibrary.button.Refresh)=='function')
+            sharedLibrary.button:Refresh()
+        """)
 
     def test_toc_and_xml(self):
         for line in (ROOT / 'QuestLite/QuestLite.toc').read_text().splitlines():
@@ -1326,6 +1443,47 @@ class AddonTests(unittest.TestCase):
                 assert(not ns.test.Eligible(id,player),'Wrong race accepted '..id)
                 player.race=5; completed[previous]=nil
             end
+        """)
+
+    def test_scout_support_and_valuable_vantages_require_turnins_on_both_maps(self):
+        self.check("""
+            UnitLevel=function() return 25 end
+            UnitRace=function() return 'Undead','Scourge',5 end
+            UnitClass=function() return 'Paladin','PALADIN',2 end
+            UnitFactionGroup=function() return 'Horde' end
+            npcs[2215]={name='High Executor Darthalia',spawns={[12]={{22,30}}}}
+            quests[528]={name='Battle of Hillsbrad',finishedBy={{2215}}}
+            quests[98094]={name='Scout Support',questLevel=25,requiredLevel=19,
+                sourceItemId=279394,requiredRaces=8589934770,startedBy={{2215}},finishedBy={{2215}}}
+            quests[98095]={name='Valuable Vantages',questLevel=25,requiredLevel=19,
+                requiredRaces=8589934770,startedBy={{2215}},finishedBy={{2215}}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(100)
+            local function Check(id,wanted)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[id] then world=true end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[id] then mini=true end end
+                assert(world==wanted and mini==wanted,'Scout chain visibility wrong '..id)
+            end
+            Check(98094,false); Check(98095,false)
+            active={528}; done[528]=true; Fire('QUEST_LOG_UPDATE'); Tick(100)
+            Check(528,true); Check(98094,false); Check(98095,false)
+            C_Item={GetItemCount=function() return 0 end}
+            UnitGUID=function() return 'Creature-0-1-0-0-2215-000001' end
+            C_GossipInfo={GetAvailableQuests=function() return {} end}
+            Fire('GOSSIP_SHOW'); Tick(100)
+            completed[528]=true; active={}; Fire('QUEST_TURNED_IN',528); Tick(100)
+            Check(98094,true); Check(98095,false)
+            active={98094}; done[98094]=true; Fire('QUEST_LOG_UPDATE'); Tick(100)
+            Check(98094,true); Check(98095,false)
+            completed[98094]=true; active={}; Fire('QUEST_TURNED_IN',98094); Tick(100)
+            Check(98094,false); Check(98095,true)
+            completed={}; ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            settings.filterAvailable:Change(false); Tick(100)
+            Check(98094,true); Check(98095,true)
+            settings.filterAvailable:Change(true); Tick(100)
+            Check(98094,false); Check(98095,false)
+            local player={active={},skills={},level=25,race=5,class=2,confirmed={[98094]=true,[98095]=true}}
+            assert(not ns.test.Eligible(98094,player) and not ns.test.Eligible(98095,player))
         """)
 
     def test_verified_item_chain_corrections_require_turnin_not_objective_completion(self):

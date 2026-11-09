@@ -73,7 +73,7 @@ for file in files:
 
 ns = lua.table()
 ns[b'testing'] = True
-for file in ['Core.lua', 'Diagnostics.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'Database.lua', 'DropChances.lua']:
+for file in ['Core.lua', 'Diagnostics.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'Database.lua', 'DropChances.lua', 'MinimapButton.lua']:
     lua.execute((ROOT / 'QuestLite' / file).read_bytes(), b'QuestLite', ns)
 g[b'guide'] = ns
 lua.execute(b'''
@@ -205,6 +205,33 @@ lua.execute(b'''
     end
 ''')
 print('Eight verified item-related prerequisite relationships passed (six local corrections, two native provider links).')
+lua.execute(b'''
+    assert(LibQuestieDB.Quest.name(528)=='Battle of Hillsbrad')
+    assert(LibQuestieDB.Quest.name(98094)=='Scout Support')
+    assert(LibQuestieDB.Quest.name(98095)=='Valuable Vantages')
+    for _,pair in ipairs({{98094,528},{98095,98094}}) do
+        local id,previous=pair[1],pair[2]
+        local oldCompleted,oldDone=completed[previous],done[previous]
+        completed[previous]=nil
+        local player={active={},skills={},level=25,race=5,class=2,confirmed={[id]=true}}
+        assert(not guide.test.Eligible(id,player),'Scout chain leaked before predecessor '..id)
+        player.active[previous]=true; done[previous]=true
+        assert(not guide.test.Eligible(id,player),'Scout chain unlocked before turn-in '..id)
+        player.active[previous]=nil; completed[previous]=true
+        assert(guide.test.Eligible(id,player),'Scout chain failed to unlock '..id)
+        player.race=1; assert(not guide.test.Eligible(id,player),'Scout chain bypassed faction mask '..id)
+        completed[previous]=oldCompleted; done[previous]=oldDone
+        assert(not LibQuestieDB.Quest.Get(id,'preQuestSingle'),'Provider was modified')
+        LibQuestieDB.Quest.InvalidateCache(id)
+    end
+''')
+print('Scout Support and Valuable Vantages: actual provider records respect prerequisite turn-ins and faction restrictions.')
+lua.execute(b'''
+    assert(LibQuestieDB.Quest.name(6547)=='Warsong Scout Update')
+    assert(guide.GetQuestSummary(6547).repeatable,'Warsong Scout Update not classified repeatable')
+    assert(not guide.GetQuestSummary(33).repeatable,'Ordinary quest classified repeatable')
+''')
+print('Actual provider repeatable flags: Warsong Scout Update classified; ordinary quest remains regular.')
 lua.execute(b'''
     local player={active={},skills={},level=25,race=5,class=2,confirmed={}}
     local sodIDs={78132,78133,78134}

@@ -21,10 +21,24 @@ local invalidatingEvents = {QUEST_TURNED_IN=true, PLAYER_LEVEL_UP=true,
 local icons = {pickup = "Interface\\GossipFrame\\AvailableQuestIcon",
     turnin = "Interface\\GossipFrame\\ActiveQuestIcon"}
 local atlases = {pickup = "QuestNormal", turnin = "QuestTurnin"}
+local repeatableAtlases = {pickup = "Recurringavailablequesticon", turnin = "Recurringactivequesticon"}
 
-function ns.SetMarkerIcon(texture, kind)
-    if texture.SetAtlas and C_Texture and ns.Safe(C_Texture.GetAtlasInfo, atlases[kind]) then
-        texture:SetAtlas(atlases[kind], false)
+function ns.SetMarkerIcon(texture, kind, quests)
+    local repeatable = false
+    for _, entry in pairs(quests or {}) do
+        if entry.kind == kind then
+            if not entry.repeatable then repeatable = false; break end
+            repeatable = true
+        end
+    end
+    local atlas = repeatable and repeatableAtlases[kind] or atlases[kind]
+    local nativeAtlas = texture.SetAtlas and C_Texture and ns.Safe(C_Texture.GetAtlasInfo, atlas)
+    -- Reset pooled textures when a mixed group changes back to a regular quest.
+    texture:SetDesaturated(repeatable and not nativeAtlas or false)
+    if repeatable and not nativeAtlas then texture:SetVertexColor(.2, .65, 1)
+    else texture:SetVertexColor(1, 1, 1) end
+    if nativeAtlas then
+        texture:SetAtlas(atlas, false)
     else
         texture:SetTexture(icons[kind])
     end
@@ -61,7 +75,7 @@ function Pin:UpdateData(data)
     self.ids = {}
     for id in pairs(data.quests) do self.ids[#self.ids + 1] = id end
     table.sort(self.ids)
-    ns.SetMarkerIcon(self.Icon, data.kind)
+    ns.SetMarkerIcon(self.Icon, data.kind, data.quests)
     self.Count:SetText(#self.ids > 1 and tostring(#self.ids) or "")
     if self.pinX ~= data.x or self.pinY ~= data.y then
         self:SetPosition(data.x, data.y)
@@ -118,6 +132,7 @@ function Pin:OnMouseEnter()
             local status = entry.kind == "turnin" and "Complete" or entry.confirmed and "Available"
                 or ns.db.filterAvailable and "Pickup" or "Unfiltered"
             if summary.classification then status = summary.classification .. " | " .. status end
+            if summary.repeatable then status = "Repeatable | " .. status end
             tip:AddDoubleLine(string.format("[%d] %s", summary.level, summary.name), status,
                 color and color.r or 1, color and color.g or .85, color and color.b or .2,
                 .75, .75, .75)
@@ -247,7 +262,8 @@ local function Start()
         end
         if not data.quests[id] then
             data.quests[id] = {kind = kind, label = label or "", x = sourceX or x,
-                y = sourceY or y, zone = zone, confirmed = confirmed}
+                y = sourceY or y, zone = zone, confirmed = confirmed,
+                repeatable = ns.GetQuestSummary(id).repeatable}
         end
         if kind == "pickup" then data.hasPickup = true end
     end
@@ -340,6 +356,25 @@ function ns.InitMap()
     local status = map:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     status:SetPoint("BOTTOM", map, "BOTTOM", 0, 24)
     map.QuestLiteStatus = status
+    -- Join the shared button stack used by Questie/RareScanner when available.
+    -- Otherwise anchor below the client's top-left map-pin control.
+    local buttonLibrary = LibStub and LibStub("Krowi_WorldMapButtons-1.4", true)
+    local optionsButton
+    if buttonLibrary and buttonLibrary.IsForever and buttonLibrary.Add then
+        optionsButton = buttonLibrary:Add(nil, "Button")
+        optionsButton.Refresh = function() end
+    else
+        optionsButton = CreateFrame("Button", "QuestLiteWorldMapButton", map)
+        local container = map.GetCanvasContainer and map:GetCanvasContainer() or map
+        optionsButton:SetPoint("TOPLEFT", container, "TOPLEFT", 3, -36)
+    end
+    ns.StyleOptionsButton(optionsButton)
+    optionsButton:SetFrameStrata("HIGH")
+    optionsButton:SetFrameLevel(map:GetFrameLevel() + 20)
+    optionsButton:SetScript("OnHide", function(self)
+        if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
+    end)
+    map.QuestLiteOptionsButton = optionsButton
     provider = CreateFromMixins(MapCanvasDataProviderMixin)
     function provider:RefreshAllData() ns.RequestMap(nil, "MAP_OPEN") end
     function provider:OnShow() ns.RequestMap(nil, "MAP_OPEN") end

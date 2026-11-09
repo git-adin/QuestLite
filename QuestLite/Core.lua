@@ -2,7 +2,7 @@
 local addon, ns = ...
 ns.name = addon
 ns.defaults = { map = true, minimap = true, available = true, turnins = true, filterAvailable = true, showLowLevel = false,
-    dropChances = true, enabled = true, sparkleOre = true, sparkleHerbs = true, sparkleQuest = true,
+    minimapButton = true, dropChances = true, enabled = true, sparkleOre = true, sparkleHerbs = true, sparkleQuest = true,
     sparkleCorpseLoot = true, sparkleOther = true }
 
 function ns.Print(message)
@@ -42,11 +42,14 @@ function ns.LoadSettings()
         if type(value) ~= "number" or value ~= value or value < 0 or value > 80 then value = default end
         ns.db[key] = math.floor(value)
     end
+    if not ns.IsFiniteNumber(ns.db.minimapButtonAngle) then ns.db.minimapButtonAngle = 225 end
+    ns.db.minimapButtonAngle = ns.db.minimapButtonAngle % 360
 end
 
 function ns.RegisterMapOptions(category)
     for _, row in ipairs({ {"map", "Show world map markers"},
         {"minimap", "Show minimap quest icons"},
+        {"minimapButton", "Show QuestLite minimap button"},
         {"available", "Quest pickups"},
         {"filterAvailable", "Hide unavailable quest pickups"},
         {"showLowLevel", "Show low level quests"},
@@ -55,12 +58,16 @@ function ns.RegisterMapOptions(category)
         local key = row[1]
         local setting = Settings.RegisterAddOnSetting(category, "QUESTLITE_" .. key:upper(),
             key, ns.db, Settings.VarType.Boolean, row[2], ns.defaults[key])
-        setting:SetValueChangedCallback(function() if ns.RequestMap then ns.RequestMap() end end)
+        setting:SetValueChangedCallback(function()
+            if key == "minimapButton" and ns.UpdateMinimapButton then ns.UpdateMinimapButton()
+            elseif ns.RequestMap then ns.RequestMap() end
+        end)
         Settings.CreateCheckbox(category, setting, key == "filterAvailable" and
             "Hide pickups blocked by known requirements or a recently checked NPC offer list. Turning this off shows locked quests too. Completed, active, wrong-class and wrong-race quests remain hidden. Server-only conditions may still differ."
             or key == "showLowLevel" and "Show all low-level pickups, ignoring the normal level cutoff below. Availability requirements still apply. Ready turn-ins stay visible either way."
             or key == "dropChances" and "Show source-specific database drop-rate estimates for active quest items in item and creature hover tooltips. Actual Forever server rates may differ."
             or key == "minimap" and "Show nearby quest pickups and turn-ins on the minimap. Uses the same availability filter, without objective icons. Works independently of world map markers."
+            or key == "minimapButton" and "Show a draggable QuestLite button around the minimap. Click it to open options."
             or "Draw quest locations on the map. Hover for details.")
     end
     for _, row in ipairs({{"levelsBelow", "Normal level limit (levels below mine)", 5}}) do
@@ -84,6 +91,7 @@ events:SetScript("OnEvent", function(self, event, name)
         self:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then
         ns.LoadSettings()
+        if ns.InitMinimapButton then ns.InitMinimapButton() end
         local ok, reason = ns.InitDatabase()
         if ok then
             if ns.InitDropChances then ns.InitDropChances() end
@@ -123,6 +131,7 @@ SlashCmdList.QUESTLITE = function(message)
     elseif command == "off" then
         ns.LoadSettings()
         for key in pairs(ns.defaults) do ns.db[key] = false end
+        if ns.UpdateMinimapButton then ns.UpdateMinimapButton() end
         if ns.RefreshSoftTargets then ns.RefreshSoftTargets() end
         if ns.DisableLootSparkles then ns.DisableLootSparkles() end
         if ns.RequestMap then ns.RequestMap() end

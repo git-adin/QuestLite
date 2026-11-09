@@ -15,6 +15,8 @@ ns.chainPrerequisiteOverrides = {
     [96984] = {92434}, -- Heart of Disruption (Horde): Blood in the Streets.
     [97287] = {96984}, -- Shrewd Negotiations: Heart of Disruption.
     [98252] = {98251}, -- A Void Path follows Never Coming Back (Forever, all Horde classes).
+    [98094] = {528}, -- Scout Support requires Battle of Hillsbrad part II turned in.
+    [98095] = {98094}, -- Valuable Vantages follows Scout Support.
     -- Verified Undead Paladin / Moonsilver Blade chain; the provider has no
     -- prerequisite fields for these steps. Require each actual turn-in.
     [91859] = {91858}, -- A Curious Pair <- Diplomatic Incident.

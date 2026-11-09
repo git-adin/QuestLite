@@ -1,4 +1,4 @@
-# QuestLite 0.3.3
+# QuestLite 0.3.7
 
 A focused quest map and loot visibility addon for World of Warcraft: Forever
 (Interface 16001). Requires **QuestieDB**. Questie and QuestieTrace are optional.
@@ -42,6 +42,13 @@ unidentified protected-action failure.
    grouped by quest giver. Continent tooltips also show the source zone. Hold Shift for
    objective text and coordinates; the tooltip opens at the cursor.
 5. Use `/ql` or Esc > Options > AddOns > QuestLite for options.
+
+A gold **!** button around the minimap also opens options. Drag it around the
+edge to reposition it; its position is saved per character. **Show QuestLite
+minimap button** in `/ql` hides it independently of quest markers.
+The main world map has its own gold **!** options button at the upper left,
+joining the shared map-button stack when Questie/RareScanner provides it.
+It remains accessible when quest markers or the minimap button are disabled.
 
 Map and sparkle features start enabled; Show low level quests starts off.
 Preferences and original soft-target CVar values are
@@ -116,6 +123,9 @@ browse them before visiting. Calendar activation is not implemented.
   database-mapped dungeon map.
 - Compact, unboxed quest pickup and turn-in icons. A count identifies markers
   containing several quests.
+- Repeatable quests use blue pickup/turn-in icons and a **Repeatable** tooltip
+  label. Quest titles keep their level-based colours. Mixed groups stay yellow
+  when their displayed pickup/turn-in type also contains a regular quest.
 - Hover details: title, quest level, required level, objective text or
   current progress, target name, and a source coordinate. This is objective
   information, not the full narrative/reward text of the quest dialog.

@@ -442,7 +442,8 @@ function ns.GetQuestSummary(id)
         if summaryCount >= 256 then summaries, summaryCount = {}, 0 end
         local restriction = ns.questRestrictions and ns.questRestrictions[id]
         summaries[id] = {name = quest.name(id) or ("Quest #" .. id), level = Get(id, "questLevel") or 0,
-            classification = restriction and restriction.label}
+            classification = restriction and restriction.label,
+            repeatable = bit.band(Get(id, "specialFlags") or 0, 1) ~= 0}
         summaryCount = summaryCount + 1
         Release(quest, id)
     end
