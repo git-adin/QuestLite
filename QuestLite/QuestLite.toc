@@ -2,7 +2,7 @@
 ## Title: QuestLite
 ## Category: Quests
 ## Notes: Lightweight quest locations, map tooltips and nearby loot sparkles for Forever.
-## Version: 0.3.7
+## Version: 0.3.9
 ## Dependencies: QuestieDB, Blizzard_MapCanvas
 ## SavedVariablesPerCharacter: QuestLiteDB, ForeverGuideDB
 ## X-License: GPL-3.0-or-later

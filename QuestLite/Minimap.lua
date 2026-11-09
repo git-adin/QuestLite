@@ -10,6 +10,7 @@ local driver = CreateFrame("Frame")
 driver:Hide()
 local elapsedSinceUpdate = 0
 local drawWidth, drawHeight
+local dropSelections = {}
 local movingPX, movingPY, movingFacing, movingRadius, movingHalfWidth, movingHalfHeight
 
 local function Release(key, pin)
@@ -23,6 +24,7 @@ end
 local function HideAll()
     for key, pin in pairs(active) do Release(key, pin) end
     lastPoints = nil
+    dropSelections = {}
     movingPX, movingPY, movingFacing, movingRadius = nil, nil, nil, nil
 end
 
@@ -103,23 +105,44 @@ local function Draw()
         and geometry == lastWidth and square == lastSquare and locations == lastPoints then return end
     lastPX, lastPY, lastFacing, lastRadius = px, py, facing, radius
     lastWidth, lastSquare, lastPoints = geometry, square, locations
-    local groups, ordered = {}, {}
+    local groups, ordered, dropChoices = {}, {}, {}
+    local function Add(location, sx, sy, id, entry)
+        -- Zone-anchored cells keep ordinary giver groups stable during motion.
+        local key = math.floor(location.x / .002 + .5) .. ":" .. math.floor(location.y / .002 + .5)
+        local group = groups[key]
+        if not group then
+            group = {key = key, sx = sx, sy = sy, x = location.x, y = location.y, kind = entry.kind, quests = {}}
+            groups[key] = group
+            ordered[#ordered + 1] = group
+        end
+        if entry.kind == "turnin" then group.kind = "turnin" end
+        group.quests[id] = entry
+    end
     for _, location in ipairs(locations) do
         local sx, sy = Position((location.x - px) * width, (location.y - py) * height,
             radius, facing, halfWidth, halfHeight, square)
         if sx then
-            -- Zone-anchored cells keep group identity stable while moving,
-            -- rotating and zooming. Player-relative screen cells caused jitter.
-            local key = math.floor(location.x / .002 + .5) .. ":" .. math.floor(location.y / .002 + .5)
-            local group = groups[key]
-            if not group then
-                group = {key = key, sx = sx, sy = sy, x = location.x, y = location.y, kind = location.kind, quests = {}}
-                groups[key] = group
-                ordered[#ordered + 1] = group
+            for id, entry in pairs(location.quests) do
+                if entry.dropStarter and entry.kind == "pickup" then
+                    local previous = dropSelections[id] == location
+                    local distance = ((location.x - px) * width)^2 + ((location.y - py) * height)^2
+                    local choice = dropChoices[id]
+                    -- One visible source per drop-start quest. Retain its anchor
+                    -- while in range so walking between sources does not jitter.
+                    if previous or not choice or (not choice.retained and distance < choice.distance) then
+                        dropChoices[id] = {location = location, sx = sx, sy = sy,
+                            entry = entry, distance = distance, retained = previous}
+                    end
+                else
+                    Add(location, sx, sy, id, entry)
+                end
             end
-            if location.kind == "turnin" then group.kind = "turnin" end
-            for id, entry in pairs(location.quests) do group.quests[id] = entry end
         end
+    end
+    dropSelections = {}
+    for id, choice in pairs(dropChoices) do
+        dropSelections[id] = choice.location
+        Add(choice.location, choice.sx, choice.sy, id, choice.entry)
     end
     table.sort(ordered, function(a, b)
         local left, right = a.sx * a.sx + a.sy * a.sy, b.sx * b.sx + b.sy * b.sy
@@ -230,7 +253,7 @@ function ns.RequestMinimap(key)
         end
     end
     worker = coroutine.create(function()
-        ns.BuildMap(id, function(questID, kind, label, x, y, confirmed)
+        ns.BuildMap(id, function(questID, kind, label, x, y, confirmed, zone, sourceX, sourceY, dropStarter)
             local pointKey = math.floor(x * 10000 + .5) .. ":" .. math.floor(y * 10000 + .5)
             local point = byPoint[pointKey]
             if not point then
@@ -240,6 +263,7 @@ function ns.RequestMinimap(key)
             end
             if kind == "turnin" then point.kind = "turnin" end
             point.quests[questID] = {kind = kind, label = label or "", x = x, y = y, confirmed = confirmed,
+                dropStarter = dropStarter,
                 repeatable = ns.GetQuestSummary(questID).repeatable}
         end, Checkpoint, key)
         locations, zoneID, stateKey = nextLocations, id, key

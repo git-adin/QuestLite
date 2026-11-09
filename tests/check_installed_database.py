@@ -424,4 +424,31 @@ lua.execute(b'''
 print(f'Offline scheduler: cold map published in {g[b"coldTicks"]} ticks; warm reopen immediate, zero scans')
 print('Native-style enter/leave event path rendered installed quest data and hid the tooltip.')
 print('Minimap marker and hover passed with installed quest data and emulated player geometry.')
+lua.execute(b'''
+    WorldMapFrame.mapID=1436 -- Westfall: Captain Sander's item-drop starter.
+    guide.RequestMap(nil,'FORCE_REFRESH'); Tick(250)
+    sanderMarkers=0
+    for _,pin in ipairs(WorldMapFrame.pins) do
+        if pin.quests[136] then
+            sanderMarkers=sanderMarkers+1
+            assert(pin.quests[136].dropStarter,'Actual treasure-map starter not classified')
+        end
+    end
+    local raw,firstX,firstY=0
+    guide.BuildMap(1436,function(id,kind,label,x,y)
+        if id==136 then raw=raw+1; firstX,firstY=firstX or x,firstY or y end
+    end,Checkpoint)
+    sanderRawSources=raw
+    assert(raw>100,'Expected dense coastal source fixture missing')
+    assert(sanderMarkers>0 and sanderMarkers<=3,'Captain Sander world-map clutter regression')
+    miniMapID=1436; miniPX,miniPY=firstX,firstY
+    Fire('ZONE_CHANGED_NEW_AREA'); Tick(250)
+    local nearby=0
+    for _,pin in pairs(guide.testMinimapActive) do
+        if pin.data.quests[136] then nearby=nearby+1 end
+    end
+    assert(nearby==1,'Actual Captain Sander minimap source clutter regression')
+''')
+print(f'Captain Sander: {g[b"sanderRawSources"]} actual source locations condensed to {g[b"sanderMarkers"]} world-map markers.')
+print('Captain Sander minimap: one nearby item-drop source marker, using actual provider data.')
 print('Installed QuestieDB integration passed (offline Lua 5.1).')

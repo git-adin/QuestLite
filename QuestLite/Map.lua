@@ -130,7 +130,7 @@ function Pin:OnMouseEnter()
             local summary = ns.GetQuestSummary(id)
             local color = GetQuestDifficultyColor and GetQuestDifficultyColor(summary.level)
             local status = entry.kind == "turnin" and "Complete" or entry.confirmed and "Available"
-                or ns.db.filterAvailable and "Pickup" or "Unfiltered"
+                or entry.dropStarter and "Item drop" or ns.db.filterAvailable and "Pickup" or "Unfiltered"
             if summary.classification then status = summary.classification .. " | " .. status end
             if summary.repeatable then status = "Repeatable | " .. status end
             tip:AddDoubleLine(string.format("[%d] %s", summary.level, summary.name), status,
@@ -138,6 +138,7 @@ function Pin:OnMouseEnter()
                 .75, .75, .75)
             if entry.zone then tip:AddLine("  " .. entry.zone, .65, .7, .75) end
             if shift then
+                if entry.dropStarter then tip:AddLine("Possible source area; obtain the quest-starting item first.", .65, .8, 1, true) end
                 ns.ShowQuestDetails(tip, id, true)
                 tip:AddLine(string.format("  Location: %.1f, %.1f", entry.x * 100, entry.y * 100), .65, .7, .75)
             end
@@ -219,13 +220,33 @@ local function Start()
         runner:Hide()
         return
     end
-    job = { count = 0, clustered = 0, pins = {}, cells = {}, mapID = mapID, stateKey = StateKey() }
+    job = { count = 0, clustered = 0, pins = {}, cells = {}, dropSources = {}, mapID = mapID, stateKey = StateKey() }
     local current = job
-    local function Emit(id, kind, label, x, y, confirmed, zone, sourceX, sourceY)
+    local function Emit(id, kind, label, x, y, confirmed, zone, sourceX, sourceY, dropStarter)
         local key = math.floor(x * 1000 + .5) .. ":" .. math.floor(y * 1000 + .5)
         local data = current.pins[key]
         local cellX, cellY = math.floor(x / .01), math.floor(y / .01)
         local best = 1
+        local sources
+        if dropStarter then
+            local sourceKey = id .. ":" .. (zone or tostring(current.mapID))
+            sources = current.dropSources[sourceKey]
+            if not sources then sources = {}; current.dropSources[sourceKey] = sources end
+            local nearest, distance
+            for _, candidate in ipairs(sources) do
+                -- Compare in source-zone coordinates so continent zoom does not
+                -- collapse a whole zone differently from its local map.
+                local dx = (candidate.sourceX - (sourceX or x))
+                local dy = (candidate.sourceY - (sourceY or y))
+                local d = dx * dx + dy * dy
+                if not distance or d < distance then nearest, distance = candidate, d end
+            end
+            if nearest and (distance < .18 * .18 or #sources >= 3) then
+                data = nearest.pin
+                data.clustered = true
+                current.clustered = current.clustered + 1
+            end
+        end
         if not data then
             for dx = -1, 1 do
                 for dy = -1, 1 do
@@ -260,9 +281,15 @@ local function Start()
         if priorities[kind] > priorities[data.kind] then
             data.kind = kind
         end
+        if sources then
+            local known = false
+            for _, source in ipairs(sources) do if source.pin == data then known = true; break end end
+            if not known then sources[#sources + 1] = {pin = data, sourceX = sourceX or x, sourceY = sourceY or y} end
+        end
         if not data.quests[id] then
             data.quests[id] = {kind = kind, label = label or "", x = sourceX or x,
                 y = sourceY or y, zone = zone, confirmed = confirmed,
+                dropStarter = dropStarter,
                 repeatable = ns.GetQuestSummary(id).repeatable}
         end
         if kind == "pickup" then data.hasPickup = true end

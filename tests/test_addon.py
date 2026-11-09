@@ -142,6 +142,86 @@ class AddonTests(unittest.TestCase):
             sharedLibrary.button:Refresh()
         """)
 
+    def test_item_drop_world_markers_are_bounded_without_losing_nearby_minimap_sources(self):
+        self.check("""
+            local coast,otherCoast={},{}
+            for i=1,100 do coast[i]={20,i}; otherCoast[i]={70,i} end
+            npcs[10]={name='Coastal murloc',spawns={[12]=coast}}
+            npcs[11]={name='Other creature',spawns={[12]=otherCoast}}
+            npcs[12]={name='Ordinary giver',spawns={[12]={{80,50}}}}
+            items[1357]={name="Captain Sander's Treasure Map",npcDrops={10}}
+            items[100]={name='Other starter',npcDrops={11}}
+            quests[136]={name="Captain Sander's Hidden Treasure",startedBy={{},{},{1357}}}
+            quests[137]={name='Other drop quest',startedBy={{},{},{100}}}
+            quests[200]={name='Normal pickup',startedBy={{12}}}
+            EnableMinimapMock(); miniPY=.9; ns.InitMinimap(); ns.RequestMap(); Tick(150)
+            local counts={[136]=0,[137]=0,[200]=0}
+            for _,pin in ipairs(WorldMapFrame.pins) do
+                for id in pairs(pin.quests) do counts[id]=counts[id]+1 end
+                if pin.quests[136] then
+                    assert(pin.quests[136].dropStarter)
+                    pin:OnMouseEnter()
+                    assert(table.concat(QuestLiteTooltip.lines,' '):find('Item drop',1,true))
+                end
+            end
+            assert(counts[136]>0 and counts[136]<=3 and counts[137]>0 and counts[137]<=3)
+            assert(counts[200]==1,'Ordinary giver lost while compacting drop sources')
+            local nearby=false
+            for _,pin in pairs(ns.testMinimapActive) do
+                if pin.data.quests[136] then nearby=true; assert(pin.data.quests[136].dropStarter) end
+            end
+            assert(nearby,'World-map representatives removed nearby minimap sources')
+            local raw=0
+            ns.BuildMap(1429,function(id,kind,label,x,y,confirmed,zone,sx,sy,drop)
+                if id==136 then raw=raw+1; assert(drop) end
+                if id==200 then assert(not drop,'Starter flag leaked into ordinary giver') end
+            end,function() end)
+            assert(raw==100,'Full source data was discarded before minimap range checks')
+        """)
+
+    def test_minimap_drop_starters_show_one_stable_in_range_source_per_quest(self):
+        self.check("""
+            local sources={}
+            for i=1,100 do sources[i]={20+i/10,30} end
+            sources[101]={80,30}
+            npcs[10]={name='Murloc',spawns={[12]=sources}}
+            npcs[11]={name='Regular giver',spawns={[12]={{23,32}}}}
+            npcs[12]={name='Second drop source',spawns={[12]={{27,31}}}}
+            items[100]={name='Treasure map',npcDrops={10}}
+            items[101]={name='Other starter',npcDrops={12}}
+            quests[1]={name='Treasure',startedBy={{},{},{100}}}
+            quests[2]={name='Regular quest',startedBy={{11}}}
+            quests[3]={name='Another drop quest',startedBy={{},{},{101}}}
+            local scans=0; local original=ns.BuildMap
+            ns.BuildMap=function(...) scans=scans+1; return original(...) end
+            EnableMinimapMock(); ns.InitMinimap(); Tick(150)
+            local function Find(id)
+                local count,pin=0,nil
+                for _,candidate in pairs(ns.testMinimapActive) do
+                    if candidate.data.quests[id] then count=count+1; pin=candidate end
+                end
+                return count,pin
+            end
+            local count,pin=Find(1); assert(count==1,'Drop source swarm not condensed')
+            assert(Find(2)==1 and Find(3)==1,'Other quests lost while compacting')
+            pin:GetScript('OnEnter')(pin)
+            local anchorX=pin.data.x; local scansBefore=scans
+            miniPX=.245; Tick(6)
+            local movedCount,moved=Find(1)
+            assert(movedCount==1 and moved==pin and moved.data.x==anchorX,'Source switched despite visible anchor')
+            assert(QuestLiteTooltip:IsShown() and QuestLiteTooltip:GetOwner()==pin)
+            cvars.rotateMinimap='1'; miniFacing=.5; miniRadius=120; Tick(6)
+            assert(select(2,Find(1))==pin,'Rotation or zoom replaced visible source')
+            cvars.rotateMinimap='0'; miniRadius=100; miniPX=.34; Tick(6)
+            count,pin=Find(1)
+            assert(count==1 and pin.data.x~=anchorX,'Did not replace out-of-range source')
+            miniPX=.5; Tick(6); assert(Find(1)==0,'Out-of-range starter left an edge icon')
+            miniPX=.8; Tick(6)
+            count,pin=Find(1)
+            assert(count==1 and pin.data.x==.8,'Distant local source lost to world-map reduction')
+            assert(scans==scansBefore,'Movement triggered database scans')
+        """)
+
     def test_toc_and_xml(self):
         for line in (ROOT / 'QuestLite/QuestLite.toc').read_text().splitlines():
             if line and not line.startswith('#'):

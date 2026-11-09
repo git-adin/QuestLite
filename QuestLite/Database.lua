@@ -323,15 +323,16 @@ function ns.BuildMap(mapID, emit, checkpoint, stateKey)
         end
         return projections[sourceID]
     end
+    local dropStarter
     local function Location(sourceID, id, kind, label, x, y, confirmed)
         if type(x) ~= "number" or type(y) ~= "number" or not (x >= 0 and x <= 100 and y >= 0 and y <= 100) then return end
         local projection = Projection(sourceID)
         if not projection then return end
         x, y = x / 100, y / 100
-        if projection == true then emit(id, kind, label, x, y, confirmed); return end
+        if projection == true then emit(id, kind, label, x, y, confirmed, nil, nil, nil, dropStarter); return end
         local px, py = projection[1] + x * projection[2], projection[3] + y * projection[4]
         if px >= 0 and px <= 1 and py >= 0 and py <= 1 then
-            emit(id, kind, label, px, py, confirmed, projection.name or ("Map " .. sourceID), x, y)
+            emit(id, kind, label, px, py, confirmed, projection.name or ("Map " .. sourceID), x, y, dropStarter)
         end
     end
     local player = Snapshot()
@@ -398,7 +399,9 @@ function ns.BuildMap(mapID, emit, checkpoint, stateKey)
         for _, source in ipairs(givers[1] or {}) do Entity(api.Npc, source, id, kind, nil, true) end
         for _, source in ipairs(givers[2] or {}) do Entity(api.Object, source, id, kind) end
         for _, source in ipairs(givers[3] or {}) do
+            dropStarter = true
             Item(source, id, kind, api.Item.name(source) or "Quest-starting item", {}, 1)
+            dropStarter = nil
         end
     end
     -- Active quests are emitted first, before the longer available-quest scan.

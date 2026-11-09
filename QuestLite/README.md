@@ -1,4 +1,4 @@
-# QuestLite 0.3.7
+# QuestLite 0.3.9
 
 A focused quest map and loot visibility addon for World of Warcraft: Forever
 (Interface 16001). Requires **QuestieDB**. Questie and QuestieTrace are optional.
@@ -123,6 +123,13 @@ browse them before visiting. Calendar activation is not implemented.
   database-mapped dungeon map.
 - Compact, unboxed quest pickup and turn-in icons. A count identifies markers
   containing several quests.
+- Item-drop starters use at most three representative source-area markers per
+  quest per zone on the world map, instead of marking every possible creature
+  spawn. Hover labels them **Item drop**; Shift explains the starter requirement.
+  The minimap shows one in-range source per item-drop quest and retains that
+  anchor while it remains visible, reducing clutter and movement jitter. Ordinary givers and turn-ins keep
+  their normal locations. Representative markers use real source coordinates;
+  they do not show every possible place the starter can drop.
 - Repeatable quests use blue pickup/turn-in icons and a **Repeatable** tooltip
   label. Quest titles keep their level-based colours. Mixed groups stay yellow
   when their displayed pickup/turn-in type also contains a regular quest.

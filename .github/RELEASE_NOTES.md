@@ -2,6 +2,11 @@ Download **QuestLite.zip** below and extract it into your WoW Forever
 `_forever_/Interface/AddOns/` folder. The result should be
 `AddOns/QuestLite/QuestLite.toc`.
 
+Item-drop starters now use at most three representative world-map markers per
+quest per zone, avoiding dense spawn-marker clutter. The minimap shows one nearby
+source per drop quest, keeping its anchor while visible to avoid jitter. Tooltips
+distinguish **Item drop** from a quest-giver pickup.
+
 Also install the **Forever** version of
 [QuestieDB](https://www.curseforge.com/wow/addons/questiedb/files/all), then restart
 WoW and enable both QuestLite and QuestieDB in the AddOns list. Use `/ql` for options.
