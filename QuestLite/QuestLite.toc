@@ -1,12 +1,14 @@
 ## Interface: 16001
 ## Title: QuestLite
+## Category: Quests
 ## Notes: Lightweight quest locations, map tooltips and nearby loot sparkles for Forever.
-## Version: 0.3.0
+## Version: 0.3.3
 ## Dependencies: QuestieDB, Blizzard_MapCanvas
 ## SavedVariablesPerCharacter: QuestLiteDB, ForeverGuideDB
 ## X-License: GPL-3.0-or-later
 
 Core.lua
+Diagnostics.lua
 AvailabilityPolicy.lua
 AvailabilityPolicyData.lua
 Database.lua

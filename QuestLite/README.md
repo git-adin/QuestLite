@@ -1,9 +1,16 @@
-# QuestLite 0.3.0
+# QuestLite 0.3.3
 
 A focused quest map and loot visibility addon for World of Warcraft: Forever
 (Interface 16001). Requires **QuestieDB**. Questie and QuestieTrace are optional.
 
 ## Install and use
+
+Download **[QuestLite.zip](https://github.com/git-adin/QuestLite/releases/latest/download/QuestLite.zip)**
+and extract it into `_forever_/Interface/AddOns/`. Install the **Forever** build of
+**[QuestieDB](https://www.curseforge.com/wow/addons/questiedb/files/all)** separately.
+The installed file should be `AddOns/QuestLite/QuestLite.toc`. Use the release ZIP,
+not GitHub's source-code archive. Updates replace only the `QuestLite` folder;
+settings in `WTF` are preserved.
 
 Previously named ForeverGuide. The addon folder is now `QuestLite`, and the
 primary commands are `/ql` and `/questlite`. `/fg` and `/foreverguide` remain
@@ -15,6 +22,16 @@ To migrate existing settings manually, close WoW and copy each character's
 an existing QuestLite.lua instead of overwriting it. QuestLite imports the legacy
 settings once, including saved original sparkle CVars, and subsequently saves
 them as QuestLiteDB. Keep the original files as backups.
+
+If the AddOn List reports interface actions failing because of QuestLite, use
+`/ql errors` after the warning occurs. The addon records the last ten blocked or
+forbidden function names, combat state, a bounded stack, and any synchronous
+QuestLite CVar call. Records persist across reloads. `/ql errors clear` clears
+only this diagnostic history; it does not hide or reset Blizzard's warnings.
+The recorder is event-driven and adds no polling or full error-handler hooks.
+These records identify the blocked action and context, not necessarily the
+original source of taint. This diagnostic update does not claim to fix an
+unidentified protected-action failure.
 
 1. Place the `QuestLite` folder in `_forever_/Interface/AddOns/`.
 2. Keep QuestieDB enabled. Disable Questie and ForeverLootSparkles on the character
@@ -52,6 +69,10 @@ unobtainable and conditional quests, including the library catalog, Scourge
 Invasion, and AQ War Effort supply/commendation quests. Explicit NPC offers can restore these entries. See
 [AvailabilityAudit.md](AvailabilityAudit.md) for the audit, provenance and limits.
 The event-specific sweep is recorded in [EventCoverage.md](EventCoverage.md).
+Known Season of Discovery leftovers are excluded in the normal Forever view and
+carry season/class labels for eligible characters browsing unfiltered candidates.
+Race/class masks still apply to confirmed NPC offers and broad mode. See
+[ClassSeasonAudit.md](ClassSeasonAudit.md) for the screenshot-specific corrections.
 Known event categories are checked at runtime as well as by imported quest IDs.
 
 After you talk to an NPC using a gossip or quest-greeting list, the filter also hides quests

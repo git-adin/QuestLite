@@ -41,7 +41,7 @@ local function SetAll(values)
 	for cvar, value in pairs(values) do
 		local current = C_CVar.GetCVar(cvar);
 		if current ~= nil and current ~= value then
-			pcall(C_CVar.SetCVar, cvar, value);
+			ns.TryAction("SetCVar " .. cvar, C_CVar.SetCVar, cvar, value);
 		end
 	end
 	applying = false;

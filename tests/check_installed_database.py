@@ -73,7 +73,7 @@ for file in files:
 
 ns = lua.table()
 ns[b'testing'] = True
-for file in ['Core.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'Database.lua', 'DropChances.lua']:
+for file in ['Core.lua', 'Diagnostics.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'Database.lua', 'DropChances.lua']:
     lua.execute((ROOT / 'QuestLite' / file).read_bytes(), b'QuestLite', ns)
 g[b'guide'] = ns
 lua.execute(b'''
@@ -182,12 +182,19 @@ lua.execute(b'''
 ''')
 print('Earthen Echo: actual giver hidden before Elder Knowledge turn-in, unlocked afterward without requiring the provided relic; provider unchanged.')
 lua.execute(b'''
+    local function AllowedID(mask,limit)
+        if not mask or mask==0 then return 1 end
+        for id=1,limit do if math.floor(mask/2^(id-1))%2==1 then return id end end
+        error('No eligible race/class in fixture')
+    end
     for _,pair in ipairs({{98823,95664},{98824,95810},{95883,95884},{95885,95883},
         {92458,92432},{92459,92458},{96984,92434},{97287,96984}}) do
         local id,previous=pair[1],pair[2]
         assert(LibQuestieDB.Quest.name(id) and LibQuestieDB.Quest.name(previous))
         local oldCompleted=completed[previous]; completed[previous]=nil
-        local player={active={},skills={},level=80,race=1,class=1,confirmed={[id]=true}}
+        local player={active={},skills={},level=80,
+            race=AllowedID(LibQuestieDB.Quest.Get(id,'requiredRaces'),40),
+            class=AllowedID(LibQuestieDB.Quest.Get(id,'requiredClasses'),20),confirmed={[id]=true}}
         assert(not guide.test.Eligible(id,player),'Missing prerequisite correction '..id)
         player.active[previous]=true; done[previous]=true
         assert(not guide.test.Eligible(id,player),'Objectives skipped turn-in '..id)
@@ -198,6 +205,70 @@ lua.execute(b'''
     end
 ''')
 print('Eight verified item-related prerequisite relationships passed (six local corrections, two native provider links).')
+lua.execute(b'''
+    local player={active={},skills={},level=25,race=5,class=2,confirmed={}}
+    local sodIDs={78132,78133,78134}
+    for _,id in ipairs(sodIDs) do
+        assert(LibQuestieDB.Quest.Get(id,'requiredClasses')==0,'Provider class fixture changed')
+        assert(not guide.test.Eligible(id,player),'SoD quest leaked for Paladin '..id)
+        player.class=1; player.confirmed[id]=true
+        assert(not guide.test.Eligible(id,player),'SoD quest leaked for Warrior in strict mode '..id)
+        guide.db.filterAvailable=false
+        assert(guide.test.Eligible(id,player),'Broad Warrior classification path not exercised '..id)
+        assert(guide.GetQuestSummary(id).classification=='Season of Discovery / Warrior')
+        player.class=2
+        assert(not guide.test.Eligible(id,player),'Broad view bypassed corrected class restriction '..id)
+        guide.db.filterAvailable=true; player.confirmed={}
+        assert(LibQuestieDB.Quest.Get(id,'requiredClasses')==0,'Shared provider class metadata was mutated')
+    end
+    assert(guide.test.Eligible(98251,player),'Ordinary Horde Never Coming Back was incorrectly hidden')
+    assert(not guide.test.Eligible(98252,player),'A Void Path leaked before prerequisite')
+    player.active[98251]=true; done[98251]=true
+    assert(not guide.test.Eligible(98252,player),'A Void Path unlocked before turn-in')
+    player.active[98251]=nil; done[98251]=nil; completed[98251]=true
+    assert(guide.test.Eligible(98252,player),'A Void Path failed to unlock after turn-in')
+    completed[98251]=nil
+    player.race=1
+    assert(not guide.test.Eligible(98251,player) and not guide.test.Eligible(98252,player),'Horde quests leaked for Alliance')
+    player.confirmed={[98251]=true,[98252]=true}
+    assert(not guide.test.Eligible(98251,player) and not guide.test.Eligible(98252,player),'Confirmed offers bypassed faction masks')
+    player.confirmed={}
+    guide.db.filterAvailable=false
+    assert(not guide.test.Eligible(98251,player) and not guide.test.Eligible(98252,player),'Broad view bypassed faction mask')
+    guide.db.filterAvailable=true
+    for _,race in ipairs({2,5,6,8,34}) do
+        player.race=race
+        assert(guide.test.Eligible(98251,player),'Horde race incorrectly rejected: '..race)
+    end
+''')
+print('Screenshot classification: SoD Warrior turn-ins hidden; Horde/Alliance masks verified (including race 34); A Void Path requires turn-in.')
+lua.execute(b'''
+    local chain={91858,91859,91860,91861,91862,96204,95034,95036,95111,95125,95126,95140}
+    local player={active={},skills={},level=26,race=5,class=2,confirmed={}}
+    for index,id in ipairs(chain) do
+        assert(LibQuestieDB.Quest.name(id),'Missing Paladin chain record '..id)
+        assert(LibQuestieDB.Quest.Get(id,'requiredClasses')==2,'Paladin mask changed '..id)
+        assert(LibQuestieDB.Quest.Get(id,'requiredRaces')==16,'Undead mask changed '..id)
+        if index>1 then
+            local previous=chain[index-1]
+            local oldCompleted,oldDone=completed[previous],done[previous]
+            completed[previous]=nil; player.confirmed={[id]=true}
+            assert(not guide.test.Eligible(id,player),'Paladin future step leaked '..id)
+            player.active[previous]=true; done[previous]=true
+            assert(not guide.test.Eligible(id,player),'Paladin objective completion bypassed turn-in '..id)
+            player.active[previous]=nil; completed[previous]=true
+            assert(guide.test.Eligible(id,player),'Paladin turn-in failed to unlock '..id)
+            player.class=1; assert(not guide.test.Eligible(id,player),'Paladin restriction bypassed '..id)
+            player.class=2; player.race=1
+            assert(not guide.test.Eligible(id,player),'Undead restriction bypassed '..id)
+            player.race=5; completed[previous]=oldCompleted; done[previous]=oldDone
+        end
+        assert(not LibQuestieDB.Quest.Get(id,'preQuestSingle'),'Provider prerequisite fixture changed '..id)
+        assert(not LibQuestieDB.Quest.Get(id,'preQuestGroup'),'Provider prerequisite fixture changed '..id)
+        LibQuestieDB.Quest.InvalidateCache(id)
+    end
+''')
+print('Undead Paladin chain: all eleven missing prerequisite links require turn-in; confirmed offers respect chain, class and race masks; provider unchanged.')
 if sample_horde:
     lua.execute(b'''
         observed={}; function Collect(id,kind,label,x,y,confirmed)

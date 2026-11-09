@@ -183,21 +183,28 @@ end
 
 local function Eligible(id, player)
     if player.active[id] then return false end
+    local restriction = ns.questRestrictions and ns.questRestrictions[id]
+    if restriction then
+        if not MaskAllows(restriction.requiredClasses, player.class) then return false end
+        -- Unsupported-season records are not ordinary event candidates. An old
+        -- or malformed NPC offer observation must not restore them in strict mode.
+        if ns.db.filterAvailable and restriction.season then return false end
+    end
     if not ns.db.showLowLevel then
         local level = Get(id, "questLevel")
         -- Scaling (-1) and unknown levels do not provide a fixed level to hide.
         if type(level) == "number" and level > 0
             and level < player.level - ns.db.levelsBelow then return false end
     end
-    -- Mandatory chain requirements also apply to confirmed offers in strict
+    if not MaskAllows(Get(id, "requiredRaces"), player.race)
+        or not MaskAllows(Get(id, "requiredClasses"), player.class) then return false end
+    -- Mandatory race/class and chain requirements also apply to confirmed offers in strict
     -- mode. Objective completion or acceptance is not prerequisite turn-in.
     -- Explicit offers can still restore conditional entries and repeatables.
     if ns.db.filterAvailable and player.confirmed and player.confirmed[id] then
         return ChainRequirementsPass(id, player)
     end
     if Completed(id) then return false end
-    if not MaskAllows(Get(id, "requiredRaces"), player.race)
-        or not MaskAllows(Get(id, "requiredClasses"), player.class) then return false end
     if ns.db.filterAvailable == false then return true end
     if PolicyRestricted(id) then return false end
     if (Get(id, "requiredLevel") or 1) > player.level then return false end
@@ -433,7 +440,9 @@ local summaries, summaryCount = {}, 0
 function ns.GetQuestSummary(id)
     if not summaries[id] then
         if summaryCount >= 256 then summaries, summaryCount = {}, 0 end
-        summaries[id] = {name = quest.name(id) or ("Quest #" .. id), level = Get(id, "questLevel") or 0}
+        local restriction = ns.questRestrictions and ns.questRestrictions[id]
+        summaries[id] = {name = quest.name(id) or ("Quest #" .. id), level = Get(id, "questLevel") or 0,
+            classification = restriction and restriction.label}
         summaryCount = summaryCount + 1
         Release(quest, id)
     end

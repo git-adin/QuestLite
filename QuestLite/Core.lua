@@ -115,6 +115,9 @@ SlashCmdList.QUESTLITE = function(message)
             ns.Print(string.format("Memory: guide %.0f KB; QuestieDB %.0f KB (shared dependency).",
                 GetAddOnMemoryUsage(addon) or 0, GetAddOnMemoryUsage("QuestieDB") or 0))
         end
+    elseif command == "errors" then
+        local argument = (message or ""):lower():match("^%s*%S+%s*(.-)%s*$")
+        if ns.ReportBlockedActions then ns.ReportBlockedActions(argument == "clear") end
     elseif command == "refresh" then
         if ns.RequestMap then ns.RequestMap(nil, "FORCE_REFRESH") end
     elseif command == "off" then
@@ -127,6 +130,6 @@ SlashCmdList.QUESTLITE = function(message)
     elseif ns.category and Settings and Settings.OpenToCategory then
         Settings.OpenToCategory(ns.category:GetID())
     else
-        ns.Print("Use /ql status, /ql refresh or /ql off.")
+        ns.Print("Use /ql status, /ql errors, /ql refresh or /ql off.")
     end
 end

@@ -1,4 +1,4 @@
-# Availability policy audit - 0.2.13
+# Availability policy audit - 0.3.2
 
 Checked against the installed Forever Questie v12.6.4 and QuestieDB v1.0.13.
 This is a consumer-policy comparison, not a live server availability scan.
@@ -17,6 +17,7 @@ This is a consumer-policy comparison, not a live server availability scan.
 | Profession specialization | Distinguish a required specialization spell from a profession ID meaning no specialization chosen. |
 | Reputation | Unknown required reputation no longer passes the strict filter silently. |
 | Race masks | Use numeric bit tests without 32-bit truncation; do not impose retail race/class combinations on Forever. |
+| Confirmed-offer faction/class bypass | Mandatory race/class masks now run before the confirmed-NPC shortcut, so confirmed offers cannot bypass faction eligibility. Tested for Horde races 2, 5, 6, 8 and 34, and Alliance rejection, including broad mode. |
 | NPC dialogs | Handle gossip, Forever's quest greeting ID tuple, and positive quest-detail offers. A single detail dialog never proves other quests absent. |
 | Server authority | A current explicit offer can restore a filtered event/collection quest or repeatable, even when database/completion flags disagree. Known chain requirements still apply in strict mode. Other givers do not inherit that confirmation. |
 | Chain override bypass | Corrected an early return that let NPC confirmation skip required predecessors, grouped prerequisites, active parents and active-or-complete unlocks. A new regression walks a three-step chain through acceptance, objective completion and turn-in on both maps. |

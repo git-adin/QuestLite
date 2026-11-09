@@ -157,7 +157,7 @@ local function SetCVarValue(name, value)
 	if current == nil or current == value then
 		return;
 	end
-	pcall(C_CVar.SetCVar, name, value);
+	ns.TryAction("SetCVar " .. name, C_CVar.SetCVar, name, value);
 end
 
 -- The game's nameplate on the interaction target, which the sparkle hangs on.

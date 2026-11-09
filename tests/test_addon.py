@@ -16,7 +16,7 @@ class AddonTests(unittest.TestCase):
         template = ET.parse(ROOT / 'QuestLite/Pins.xml').getroot()[0]
         self.lua.globals().pinTemplateMouseEnabled = template.attrib.get('enableMouse') == 'true'
         self.ns = self.lua.table(testing=True)
-        for name in ['Core.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'Database.lua', 'DropChances.lua', 'Map.lua', 'Minimap.lua', 'SoftTarget.lua', 'LootSparkles.lua']:
+        for name in ['Core.lua', 'Diagnostics.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'Database.lua', 'DropChances.lua', 'Map.lua', 'Minimap.lua', 'SoftTarget.lua', 'LootSparkles.lua']:
             self.lua.execute((ROOT / 'QuestLite' / name).read_text(encoding='utf-8'), 'QuestLite', self.ns)
         self.lua.globals().ns = self.ns
         self.lua.execute("Fire('ADDON_LOADED','QuestLite'); Fire('PLAYER_LOGIN')")
@@ -30,6 +30,55 @@ class AddonTests(unittest.TestCase):
             if line and not line.startswith('#'):
                 self.assertTrue((ROOT / 'QuestLite' / line).is_file(), line)
         ET.parse(ROOT / 'QuestLite/Pins.xml')
+
+    def test_blocked_action_recorder_filters_addons_bounds_history_and_prints_once(self):
+        self.check("""
+            local initial=#messages
+            debugstack=function() return string.rep('trace ',400) end
+            Fire('ADDON_ACTION_BLOCKED','OtherAddon','OtherAction()')
+            assert(ns.db.blockedActions==nil and #messages==initial)
+            for index=1,25 do Fire('ADDON_ACTION_BLOCKED','QuestLite','Action'..index..'()') end
+            assert(#ns.db.blockedActions==10 and #messages==initial+1)
+            assert(ns.db.blockedActions[1].action=='Action16()')
+            assert(ns.db.blockedActions[10].action=='Action25()')
+            assert(#ns.db.blockedActions[10].stack==1500)
+            combat=true; Fire('ADDON_ACTION_FORBIDDEN','QuestLite','ProtectedAction()'); combat=false
+            assert(ns.db.blockedActions[10].combat and ns.db.blockedActions[10].event=='ADDON_ACTION_FORBIDDEN')
+            SlashCmdList.QUESTLITE('errors')
+            assert(messages[#messages]:find('ProtectedAction()',1,true))
+            SlashCmdList.QUESTLITE('errors clear')
+            assert(ns.db.blockedActions==nil)
+        """)
+
+    def test_blocked_action_context_records_cvar_call_without_changing_pcall_behavior(self):
+        self.check("""
+            ns.currentAction='outer context'
+            local setter=C_CVar.SetCVar
+            C_CVar.SetCVar=function(name,value)
+                Fire('ADDON_ACTION_BLOCKED','QuestLite','C_UnitAuras.GetAuraDataByIndex()')
+                return setter(name,value)
+            end
+            cvars.outlineModeShowLootEffectWhenDisabled='0'
+            Fire('CVAR_UPDATE','outlineModeShowLootEffectWhenDisabled'); Tick(100)
+            local rows=ns.db.blockedActions
+            assert(rows and rows[#rows].context=='SetCVar outlineModeShowLootEffectWhenDisabled')
+            assert(cvars.outlineModeShowLootEffectWhenDisabled=='1' and ns.currentAction=='outer context')
+            local ok,err=ns.TryAction('test error',function() error('original failure') end)
+            assert(not ok and err:find('original failure',1,true) and ns.currentAction=='outer context')
+        """)
+
+    def test_blocked_action_history_handles_corruption_and_secret_event_fields(self):
+        self.check("""
+            ns.db.blockedActions='damaged'
+            SlashCmdList.QUESTLITE('errors'); assert(#ns.db.blockedActions==0)
+            ns.db.blockedActions={{invalid=true},{event='ADDON_ACTION_BLOCKED',action='SavedAction()'}}
+            SlashCmdList.QUESTLITE('errors'); assert(#ns.db.blockedActions==1)
+            issecretvalue=function(value) return value=='SECRET' end
+            Fire('ADDON_ACTION_BLOCKED','SECRET','SecretAction()')
+            assert(#ns.db.blockedActions==1)
+            Fire('ADDON_ACTION_BLOCKED','QuestLite','SECRET')
+            assert(ns.db.blockedActions[2].action=='Unavailable')
+        """)
 
     def test_drop_rate_source_precedence_missing_rows_and_formatting(self):
         self.check("""
@@ -1152,6 +1201,131 @@ class AddonTests(unittest.TestCase):
             completed[95664]=true
             C_Item.GetItemCount=function() error('Restricted inventory query') end
             assert(ns.test.Eligible(98823,player),'Quest-provided relic incorrectly became a pickup requirement')
+        """)
+
+    def test_screenshot_season_class_and_chain_rules_on_both_maps(self):
+        self.check("""
+            UnitLevel=function() return 25 end
+            UnitRace=function() return 'Undead','Scourge',5 end
+            UnitClass=function() return 'Paladin','PALADIN',2 end
+            UnitFactionGroup=function() return 'Horde' end
+            npcs[210995]={name='Alonso',spawns={[12]={{20,30}}}}
+            npcs[267214]={name="Va'xug Firefure",spawns={[12]={{22,30}}}}
+            for _,id in ipairs({78132,78133,78134}) do
+                quests[id]={name='Dragonslayer '..id,questLevel=25,requiredLevel=15,requiredClasses=0,startedBy={{210995}}}
+            end
+            quests[98251]={name='Never Coming Back',questLevel=23,requiredLevel=18,requiredClasses=0,
+                requiredRaces=8589934770,startedBy={{267214}},finishedBy={{267214}}}
+            quests[98252]={name='A Void Path',questLevel=23,requiredLevel=18,requiredClasses=0,
+                requiredRaces=8589934770,startedBy={{267214}}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(100)
+            local function Check(id,wanted)
+                local found=false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[id] then found=true end end
+                assert(found==wanted,'Wrong world map visibility '..id)
+                found=false
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[id] then found=true end end
+                assert(found==wanted,'Wrong minimap visibility '..id)
+            end
+            for _,id in ipairs({78132,78133,78134,98252}) do Check(id,false) end
+            Check(98251,true) -- A Warlock NPC does not make this Warlock-only.
+            active[1]=98251; done[98251]=true; Fire('QUEST_LOG_UPDATE'); Tick(100)
+            Check(98252,false); Check(98251,true) -- Ready turn-in remains visible.
+            active={}; completed[98251]=true; Fire('QUEST_TURNED_IN',98251); Tick(100)
+            Check(98251,false); Check(98252,true)
+            settings.filterAvailable:Change(false); Tick(100)
+            for _,id in ipairs({78132,78133,78134}) do Check(id,false) end -- Wrong class even in broad view.
+            UnitClass=function() return 'Warrior','WARRIOR',1 end
+            ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            for _,id in ipairs({78132,78133,78134}) do Check(id,true) end
+            local classified=false
+            for _,pin in ipairs(WorldMapFrame.pins) do
+                if pin.quests[78132] then
+                    pin:OnMouseEnter()
+                    for _,line in ipairs(QuestLiteTooltip.lines) do
+                        if line:find('Season of Discovery / Warrior',1,true) then classified=true end
+                    end
+                end
+            end
+            assert(classified,'Unfiltered seasonal quest was not labelled')
+            settings.filterAvailable:Change(true); Tick(100)
+            for _,id in ipairs({78132,78133,78134}) do Check(id,false) end
+            local player={active={},skills={},level=25,race=5,class=1,confirmed={[78132]=true}}
+            assert(not ns.test.Eligible(78132,player),'Confirmed offer restored unsupported SoD record')
+            player.confirmed={}; player.race=1
+            assert(not ns.test.Eligible(98251,player) and not ns.test.Eligible(98252,player),
+                'Horde-only quest leaked for an Alliance race')
+            player.confirmed={[98251]=true,[98252]=true}
+            assert(not ns.test.Eligible(98251,player) and not ns.test.Eligible(98252,player),
+                'Confirmed NPC offer bypassed faction restrictions')
+            player.confirmed={}
+            ns.db.filterAvailable=false
+            assert(not ns.test.Eligible(98251,player) and not ns.test.Eligible(98252,player),
+                'Broad view bypassed the faction race mask')
+            ns.db.filterAvailable=true
+            for _,race in ipairs({2,5,6,8,34}) do
+                player.race=race
+                assert(ns.test.Eligible(98252,player),'Eligible Horde race was rejected: '..race)
+            end
+            UnitClass=function() return 'Paladin','PALADIN',2 end
+            UnitRace=function() return 'Human','Human',1 end
+            UnitFactionGroup=function() return 'Alliance' end
+            ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            Check(98251,false); Check(98252,false)
+        """)
+
+    def test_undead_paladin_chain_waits_for_each_turnin_on_both_maps(self):
+        self.check("""
+            UnitLevel=function() return 26 end
+            UnitRace=function() return 'Undead','Scourge',5 end
+            UnitClass=function() return 'Paladin','PALADIN',2 end
+            UnitFactionGroup=function() return 'Horde' end
+            local chain={91858,91859,91860,91861,91862,96204,95034,95036,95111,95125,95126,95140}
+            npcs[10]={name='Chain giver',spawns={[12]={{22,30}}}}
+            for _,id in ipairs(chain) do
+                quests[id]={name='Paladin step '..id,questLevel=25,requiredLevel=20,
+                    requiredClasses=2,requiredRaces=16,startedBy={{10}},finishedBy={{10}}}
+            end
+            quests[411]={name='Thule Ravenclaw',finishedBy={{10}}}
+            active={411}; done[411]=true
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(100)
+            local function Check(id,wanted)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[id] then world=true end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[id] then mini=true end end
+                assert(world==wanted,'Wrong world chain visibility '..id)
+                assert(mini==wanted,'Wrong minimap chain visibility '..id)
+            end
+            for index,id in ipairs(chain) do
+                for nextIndex,nextID in ipairs(chain) do Check(nextID,nextIndex==index) end
+                Check(411,true)
+                active={411,id}; Fire('QUEST_LOG_UPDATE'); Tick(100)
+                Check(id,false)
+                if chain[index+1] then Check(chain[index+1],false) end
+                done[id]=true; Fire('QUEST_LOG_UPDATE'); Tick(100)
+                Check(id,true) -- Ready turn-in remains visible, future pickup does not.
+                if chain[index+1] then Check(chain[index+1],false) end
+                completed[id]=true; active={411}; done[id]=nil
+                Fire('QUEST_TURNED_IN',id); Tick(100)
+                Check(id,false); Check(411,true)
+            end
+            completed={}; ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            settings.filterAvailable:Change(false); Tick(100)
+            for _,id in ipairs(chain) do Check(id,true) end
+            settings.filterAvailable:Change(true); Tick(100)
+            for index,id in ipairs(chain) do Check(id,index==1) end
+            local player={active={},skills={},level=26,race=5,class=2,confirmed={}}
+            for index=2,#chain do
+                local id,previous=chain[index],chain[index-1]
+                player.confirmed={[id]=true}
+                assert(not ns.test.Eligible(id,player),'Confirmed offer bypassed chain '..id)
+                completed[previous]=true
+                assert(ns.test.Eligible(id,player),'Turn-in did not unlock '..id)
+                player.class=1; assert(not ns.test.Eligible(id,player),'Wrong class accepted '..id)
+                player.class=2; player.race=1
+                assert(not ns.test.Eligible(id,player),'Wrong race accepted '..id)
+                player.race=5; completed[previous]=nil
+            end
         """)
 
     def test_verified_item_chain_corrections_require_turnin_not_objective_completion(self):

@@ -115,9 +115,10 @@ function Pin:OnMouseEnter()
             local entry = self.data.quests[id]
             local summary = ns.GetQuestSummary(id)
             local color = GetQuestDifficultyColor and GetQuestDifficultyColor(summary.level)
-            tip:AddDoubleLine(string.format("[%d] %s", summary.level, summary.name),
-                entry.kind == "turnin" and "Complete" or entry.confirmed and "Available"
-                    or ns.db.filterAvailable and "Pickup" or "Unfiltered",
+            local status = entry.kind == "turnin" and "Complete" or entry.confirmed and "Available"
+                or ns.db.filterAvailable and "Pickup" or "Unfiltered"
+            if summary.classification then status = summary.classification .. " | " .. status end
+            tip:AddDoubleLine(string.format("[%d] %s", summary.level, summary.name), status,
                 color and color.r or 1, color and color.g or .85, color and color.b or .2,
                 .75, .75, .75)
             if entry.zone then tip:AddLine("  " .. entry.zone, .65, .7, .75) end

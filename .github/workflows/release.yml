@@ -1,0 +1,37 @@
+name: Package and publish addon
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install --target .tools -r tests/requirements.txt
+      - name: Run offline Lua regression tests
+        run: python tests/test_addon.py
+      - name: Build installable ZIPs and verify version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python tools/package.py --tag "$RELEASE_TAG"
+      - name: Create draft, upload packages, and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --draft \
+            --title "QuestLite $RELEASE_TAG" --notes-file .github/RELEASE_NOTES.md
+          gh release upload "$RELEASE_TAG" \
+            "dist/QuestLite-${RELEASE_TAG#v}.zip" dist/QuestLite.zip dist/SHA256SUMS.txt
+          gh release edit "$RELEASE_TAG" --draft=false --latest

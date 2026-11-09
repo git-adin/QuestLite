@@ -14,6 +14,31 @@ ns.chainPrerequisiteOverrides = {
     [92459] = {92458}, -- Friend of the Kirin Tor: Heart of Disruption.
     [96984] = {92434}, -- Heart of Disruption (Horde): Blood in the Streets.
     [97287] = {96984}, -- Shrewd Negotiations: Heart of Disruption.
+    [98252] = {98251}, -- A Void Path follows Never Coming Back (Forever, all Horde classes).
+    -- Verified Undead Paladin / Moonsilver Blade chain; the provider has no
+    -- prerequisite fields for these steps. Require each actual turn-in.
+    [91859] = {91858}, -- A Curious Pair <- Diplomatic Incident.
+    [91860] = {91859}, -- A Grim Fate <- A Curious Pair.
+    [91861] = {91860}, -- Into Fenris Keep <- A Grim Fate.
+    [91862] = {91861}, -- Lumina Windsinger <- Into Fenris Keep.
+    [96204] = {91862}, -- The Windshaper's Wrath <- Lumina Windsinger.
+    [95034] = {96204}, -- The Debt <- The Windshaper's Wrath.
+    [95036] = {95034}, -- A Moon-Kissed Blade <- The Debt.
+    [95111] = {95036}, -- An Underrated Talent <- A Moon-Kissed Blade.
+    [95125] = {95111}, -- Ott's Masterwork <- An Underrated Talent.
+    [95126] = {95125}, -- The Moonsilver Blade <- Ott's Masterwork.
+    [95140] = {95126}, -- Old Fire-Eye <- The Moonsilver Blade.
+}
+-- These IDs leak into the Forever data with no class or season restrictions.
+-- They are Alonso's Season of Discovery Warrior rune turn-ins, not general
+-- Forever pickups. Keep the classification visible when a Warrior browses
+-- unfiltered candidates; never infer a season from numeric quest-ID ranges.
+local sodWarrior = {season = "Season of Discovery", requiredClasses = 1,
+    label = "Season of Discovery / Warrior"}
+ns.questRestrictions = {
+    [78132] = sodWarrior, -- Dragonslayer's Helm.
+    [78133] = sodWarrior, -- Dragonslayer's Shield.
+    [78134] = sodWarrior, -- Dragonslayer's Lance.
 }
 -- sourceItemId is quest-provided, not an inventory prerequisite. The relic
 -- follow-ups above unlock on prerequisite turn-in, even if the provided copy
