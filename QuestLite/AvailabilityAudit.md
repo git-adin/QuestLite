@@ -1,5 +1,23 @@
 # Availability policy audit - 0.3.2
 
+## Betrayed pickup review - 0.4.19
+
+The level-45 Horde player confirmed that Belgrom Rockmaul does not offer
+Betrayed (3504). QuestieDB 1.1.2 and ForeverDB Classic both list minimum 44,
+quest level 53, with no prerequisite. The
+[AllTheThings Forever Azshara data](https://github.com/DFortun81/AllTheThings/blob/master/.contrib/.db/forever/zones/kalimdor/azshara.lua)
+also lists minimum 44 and giver 4485. A
+[Forever player report](https://www.wowhead.com/forever/quest=3504/betrayed)
+similarly says the giver does not offer it. The actual missing condition remains
+unverified: no higher level, reputation or prerequisite is invented.
+
+Quest 3504 is explicitly offer-only in strict mode, using the existing bounded
+NPC offer observations. Broad browsing remains possible; actual offers restore
+the pickup while respecting faction/class/chain checks. Ready turn-ins are
+unaffected. The guide and expanded details distinguish difficulty from minimum
+pickup level, and label missing minimum data as unknown. Offline tests cover both
+maps, offer arrival/removal, broad mode, faction rejection and ready turn-ins.
+
 Checked against the installed Forever Questie v12.6.4 and QuestieDB v1.0.13.
 This is a consumer-policy comparison, not a live server availability scan.
 
@@ -95,3 +113,125 @@ as the follow-up. Darthalia's Orders is provided on acceptance, not a bag gate.
 Native minimum level, race/class restrictions and provider data are preserved.
 Both maps are tested before acceptance, at objective completion and after turn-in;
 confirmed offers cannot bypass the prerequisite. Broad view still permits browsing.
+
+## Skyborne Hunter referral: live-server correction (0.3.12)
+
+Elayaa Easewind's Taming the Beast (94007) remains available after the player
+completes pet-training quests. The user's live-server check on 2026-11-09
+confirmed acceptance while already having a trained pet. The provider has no
+breadcrumb relationship to the first taming exercise (94978). This absence must
+not be interpreted as missing data merely from the quest text or a series list.
+
+The inferred 0.3.11 override was removed. Both quests retain their independent
+native eligibility, and known database breadcrumb relationships keep their prior
+behavior. Tests now verify that 94007 remains visible before acceptance on both
+maps after pet training, including confirmed offers. Accepted quests still use
+the normal active/ready-turn-in behavior. Provider data remains unchanged.
+
+## Walton turn-in requirements (0.4.1)
+
+The player's live report and firsthand reports on
+[Unwelcome Guests](https://www.wowhead.com/forever/quest=95508/unwelcome-guests)
+describe delivering The Hermit Tanner (95495), investigating for Trouble in the
+Valley (95621), then defending Walton in Unwelcome Guests (95508). QuestieDB
+omits prerequisites for both Walton pickups. Local corrections require 95495
+turned in before 95621, then 95621 turned in before 95508. Active or merely
+objective-complete predecessors are insufficient. Ready turn-ins are preserved.
+
+No new requirement is placed on Vrang's earlier quests: sources disagree about
+whether both of his gathering quests are required for The Hermit Tanner. A quest
+series listing by itself does not justify inventing that restriction. Broad mode
+still permits browsing; native faction/class masks and shared provider data are
+preserved. Both maps and confirmed-offer handling have regression coverage.
+
+## Horde Dalaran attunement lead-in (0.4.5; QuestieDB 1.0.14)
+
+The updated provider still has no prerequisites for Blood in the Streets (92434).
+Dalaran Patrols (545) records Prison Break In (544) but omits Key to the City
+(93680). [The attunement guide](https://www.wowhead.com/forever/news/how-to-become-attuned-to-city-of-dalaran-dungeon-as-horde-in-wow-forever-383256)
+and [firsthand quest reports](https://www.wowhead.com/forever/quest=92434/blood-in-the-streets)
+identify Wordeen's prior work; a [Patrols report](https://www.wowhead.com/forever/quest=545/dalaran-patrols)
+explicitly identifies Key to the City as a prerequisite.
+
+A local additional requirement for 545 requires 93680 turned in, preserving the
+native 544 requirement. 92434 requires both 545 and 93680 turned in. Acceptance
+or objective completion does not suffice. Bel'varil's separate Stone Tokens and
+Bracers of Binding are not required. No Grimy Key inventory gate is added: it is
+provided by the quest. Existing downstream 92434 -> 96984 -> 97287 corrections
+are preserved. Both maps, confirmed offers, broad mode and Horde race checks
+are covered; provider-owned rows are unchanged.
+
+## Native prerequisite precedence (0.4.7; QuestieDB 1.1.0)
+
+The provider now encodes all 25 local correction records. Historical overrides
+are fallbacks for empty native prerequisite fields, with the exact older Patrols
+{544} expression retaining its supplemental key gate. Native AND/OR expressions
+win as soon as they are supplied. This avoids applying an Alliance-only or
+Horde-only historical predecessor on top of a newer list of alternatives.
+The current native Patrols AND list covers Prison Break In and Key to the City;
+Blood in the Streets requires completed Patrols. A completed predecessor is
+sufficient without re-evaluating its own historical prerequisites. QuestLite does
+not mutate shared rows or recursively invent additional restrictions.
+
+## Powderfuse introductions and prerequisite guidance (0.4.16)
+
+Smuggler's Paradise (95288) has no predecessor fields in the installed provider,
+while both The Goblin Trader (93976, Horde) and A Few Furs for Friz (94928,
+Alliance) have explicit forward links to it. The user's negative offer report
+exposed this gap. The primary
+[AllTheThings Riverglades data](https://github.com/DFortun81/AllTheThings/blob/master/.contrib/.db/forever/zones/eastern%20kingdoms/riverglades.lua)
+explicitly lists both source quests and records their respective faction branches.
+They are modeled as alternatives; requiring both would block both factions.
+
+Added a missing-native-data OR fallback for 95288, requiring either introduction
+turned in. Three explicit single-predecessor source links in that same primary
+data are also filled only when native requirements are empty:
+93976 <- 93788 (Borrowed Blades), 94928 <- 94925 (A Fur Trade), and
+95293 (Smuggler's Special) <- 95288. No unrelated Riverglades sequence, reputation
+threshold or item-inventory condition is inferred. Broad mode keeps browsing
+behavior, while strict confirmed offers retain the verified mandatory checks.
+
+The references agree on Powderfuse Port: provider coordinates 77.1,52.9 versus
+primary-source 77.0,52.8. Coordinates are not moved. An entirely absent NPC is not
+explained by these data alone; spawn/phasing would still need live confirmation.
+The provider's missing minimum-level field is not silently replaced from a guide.
+
+New `/ql prereq <ID or exact name>` and Shift details show known missing turn-in
+steps, with faction/class filtering of alternative branches, pickup/return NPCs
+and known locations. Shared prerequisite selection preserves native precedence
+and OR versus AND semantics. Completed exclusive alternatives satisfy native
+positive groups consistently. Output is bounded to four links and ten quest rows,
+with visited-ID cycle protection; no graph/name index is retained. Parent-quest
+activation, breadcrumbs, professions and other server conditions are not relabeled
+as mandatory turn-ins. Lookup is on demand and names are read in the client locale.
+
+Validation: 107 offline regressions plus both installed-provider profiles. Cases
+cover both faction routes, acceptance versus turn-in, newer native AND lists,
+map/minimap visibility, active turn-in guidance, completed-step suppression, exact
+name lookup, cycles/depth bounds, and the actual Friz pickup at its native location.
+The comparison audit now records fallback mode (all/any) explicitly.
+
+## Step One: Rock / ogre introduction (0.4.17)
+
+Both screenshot markers are quest 95183 (Step One: Rock), recorded at Hamur
+263440 and Gorgegut 259988. The provider has no predecessor or reputation gate
+for it. A firsthand report on
+[Step One: Rock](https://www.wowhead.com/forever/quest=95183/step-one-rock)
+explicitly identifies Land of Giants (95420) as the ogre-quest introduction. The
+user confirmed it had not been turned in. Added 95183 <- 95420 as a missing-native
+fallback; acceptance or objective completion alone does not unlock the pickups.
+The native prerequisite for Step Two: More Rock (96026 <- 95183) remains unchanged.
+
+The gate is scoped to this verified pickup, not every ogre NPC or Bolder'ok quest.
+No Friendly reputation, mining/blacksmithing requirement, Clugfist's Decree gate
+or additional chain sequence is inferred. The recorded giver coordinates are not
+moved or removed; neither giver was observed after the introduction. Genuine
+server offers still use the established strict mandatory-chain rules.
+
+`/ql prereq Step One: Rock` follows known missing prerequisites and shows pickup
+locations; an accepted Land of Giants points to Clugfist for turn-in. The bounded
+route uses the provider's existing earlier links. Native prerequisite data takes
+precedence when added later. Broad browsing and ready turn-ins retain behavior.
+Validation: 108 offline regressions plus both installed-provider profiles, covering
+both source markers, before/after turn-in, active objective-complete introduction,
+new native prerequisite precedence, ready turn-ins and actual prerequisite guidance.

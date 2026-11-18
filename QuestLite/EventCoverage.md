@@ -1,6 +1,6 @@
-# Event coverage audit - 0.3.0
+# Event coverage audit - 0.4.20
 
-Checked against the installed Questie v12.6.4 and QuestieDB Forever v1.0.13.
+Checked against the installed Questie v12.10.0 and QuestieDB Forever v1.1.2.
 Counts overlap across lists and database categories; they are not additive.
 
 ## Separate event lists
@@ -25,7 +25,7 @@ Counts overlap across lists and database categories; they are not additive.
 | Midsummer | 16 |
 | Noblegarden | 0 |
 | PilgrimsBounty | 0 |
-| WinterVeil | 31 |
+| WinterVeil | 36 |
 
 ## Database categories checked independently
 
@@ -42,7 +42,7 @@ Counts overlap across lists and database categories; they are not additive.
 | LUNAR_FESTIVAL | 72 | 0 |
 | DARKMOON_FAIRE | 44 | 0 |
 | DAY_OF_THE_DEAD | 0 | 0 |
-| SEASONAL | 69 | 0 |
+| SEASONAL | 74 | 0 |
 | HALLOWS_END | 0 | 0 |
 | INVASION | 31 | 0 |
 | AHN_QIRAJ_WAR | 76 | 0 |

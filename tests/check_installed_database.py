@@ -73,7 +73,7 @@ for file in files:
 
 ns = lua.table()
 ns[b'testing'] = True
-for file in ['Core.lua', 'Diagnostics.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'Database.lua', 'DropChances.lua', 'MinimapButton.lua']:
+for file in ['Core.lua', 'QuestVisibility.lua', 'Diagnostics.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'ForeverDBCorrections.lua', 'Database.lua', 'Options.lua', 'DropChances.lua', 'MinimapButton.lua']:
     lua.execute((ROOT / 'QuestLite' / file).read_bytes(), b'QuestLite', ns)
 g[b'guide'] = ns
 lua.execute(b'''
@@ -89,6 +89,18 @@ lua.execute(b'''
     end
 ''')
 lua.execute(b'''
+    function NativeRequirements(id)
+        return table.concat(LibQuestieDB.Quest.Get(id,'preQuestSingle') or {},',')..'/'..
+            table.concat(LibQuestieDB.Quest.Get(id,'preQuestGroup') or {},',')
+    end
+    nativeRequirements={}
+    for _,id in ipairs(LibQuestieDB.Quest.GetAllIds()) do
+        nativeRequirements[id]=NativeRequirements(id)
+        LibQuestieDB.Quest.InvalidateCache(id)
+    end
+    function CheckNativeRequirements(id)
+        assert(NativeRequirements(id)==nativeRequirements[id],'Provider prerequisite mutated '..id)
+    end
     eventCategoryCount=0
     for _,id in ipairs(LibQuestieDB.Quest.GetAllIds()) do
         local sort=LibQuestieDB.Quest.Get(id,'zoneOrSort')
@@ -151,7 +163,7 @@ lua.execute(b'''
     assert(LibQuestieDB.Quest.name(98823)=='Earthen Echo')
     assert(LibQuestieDB.Quest.Get(98823,'sourceItemId')==287958)
     local required=LibQuestieDB.Quest.Get(98823,'requiredSourceItems')
-    assert(not required or #required==0,'Earthen Echo provider fixture changed')
+    CheckNativeRequirements(98823)
     local oldLevel,oldFaction,oldRace,oldClass,oldItems=UnitLevel,UnitFactionGroup,UnitRace,UnitClass,C_Item
     UnitLevel=function() return 31 end
     UnitFactionGroup=function() return 'Horde' end
@@ -211,6 +223,7 @@ lua.execute(b'''
     assert(LibQuestieDB.Quest.name(98095)=='Valuable Vantages')
     for _,pair in ipairs({{98094,528},{98095,98094}}) do
         local id,previous=pair[1],pair[2]
+        local nativePrevious=table.concat(LibQuestieDB.Quest.Get(id,'preQuestSingle') or {},',')
         local oldCompleted,oldDone=completed[previous],done[previous]
         completed[previous]=nil
         local player={active={},skills={},level=25,race=5,class=2,confirmed={[id]=true}}
@@ -221,17 +234,145 @@ lua.execute(b'''
         assert(guide.test.Eligible(id,player),'Scout chain failed to unlock '..id)
         player.race=1; assert(not guide.test.Eligible(id,player),'Scout chain bypassed faction mask '..id)
         completed[previous]=oldCompleted; done[previous]=oldDone
-        assert(not LibQuestieDB.Quest.Get(id,'preQuestSingle'),'Provider was modified')
+        CheckNativeRequirements(id)
         LibQuestieDB.Quest.InvalidateCache(id)
     end
 ''')
 print('Scout Support and Valuable Vantages: actual provider records respect prerequisite turn-ins and faction restrictions.')
+lua.execute(b'''
+    assert(LibQuestieDB.Quest.name(95495)=='The Hermit Tanner')
+    assert(LibQuestieDB.Quest.name(95621)=='Trouble in the Valley')
+    assert(LibQuestieDB.Quest.name(95508)=='Unwelcome Guests')
+    for _,pair in ipairs({{95621,95495},{95508,95621}}) do
+        local id,previous=pair[1],pair[2]
+        local nativePrevious=table.concat(LibQuestieDB.Quest.Get(id,'preQuestSingle') or {},',')
+        local oldCompleted,oldDone=completed[previous],done[previous]
+        completed[previous]=nil
+        local player={active={},skills={},level=18,race=5,class=2,confirmed={[id]=true}}
+        assert(not guide.test.Eligible(id,player),'Premature Walton pickup '..id)
+        player.active[previous]=true; done[previous]=true
+        assert(not guide.test.Eligible(id,player),'Walton objective completion bypassed turn-in '..id)
+        player.active[previous]=nil; completed[previous]=true
+        assert(guide.test.Eligible(id,player),'Walton pickup failed to unlock '..id)
+        player.race=96; player.class=3
+        assert(guide.test.Eligible(id,player),'Horde Skyborne Hunter incorrectly blocked '..id)
+        player.race=1
+        assert(not guide.test.Eligible(id,player),'Walton faction restriction bypassed '..id)
+        completed[previous]=oldCompleted; done[previous]=oldDone
+        assert(table.concat(LibQuestieDB.Quest.Get(id,'preQuestSingle') or {},',')==nativePrevious,'Shared Walton provider row modified')
+        LibQuestieDB.Quest.InvalidateCache(id)
+    end
+    assert(not guide.chainPrerequisiteOverrides[95495],"Unverified Vrang prerequisites were invented")
+''')
+print('Walton: Hermit Tanner -> Trouble in the Valley -> Unwelcome Guests turn-ins verified; Vrang requirements unchanged.')
+lua.execute(b'''
+    local originals={}
+    for _,id in ipairs({544,545,93680}) do
+        originals[id]={completed[id],done[id]}; completed[id]=nil; done[id]=nil
+    end
+    assert(LibQuestieDB.Quest.name(92434)=='Blood in the Streets')
+    assert(nativeRequirements[545]=='544/' or nativeRequirements[545]=='/544,93680','Unexpected Patrols requirements')
+    local player={active={},skills={},level=35,race=96,class=3,confirmed={[545]=true,[92434]=true}}
+    assert(not guide.test.Eligible(545,player) and not guide.test.Eligible(92434,player))
+    completed[544]=true; player.active[93680]=true; done[93680]=true
+    assert(not guide.test.Eligible(545,player),'Key objectives bypassed turn-in')
+    completed[93680]=true; player.active={}
+    assert(guide.test.Eligible(545,player),'Native Prison Break In plus Key turn-ins did not unlock Patrols')
+    player.active[545]=true; done[545]=true
+    assert(not guide.test.Eligible(92434,player),'Patrol objectives bypassed turn-in')
+    completed[545]=true; player.active={}
+    assert(guide.test.Eligible(92434,player),'Attunement did not unlock after both turn-ins')
+    completed[93680]=nil
+    assert(guide.test.Eligible(92434,player)==(nativeRequirements[92434]~='/'),'Native entry requirements did not take precedence')
+    for _,id in ipairs({544,545,93680}) do completed[id]=originals[id][1]; done[id]=originals[id][2] end
+    CheckNativeRequirements(545); CheckNativeRequirements(92434)
+''')
+print('Horde Dalaran: native Prison Break In retained; Key and Patrols turn-ins enforced before entry, including confirmed offers.')
 lua.execute(b'''
     assert(LibQuestieDB.Quest.name(6547)=='Warsong Scout Update')
     assert(guide.GetQuestSummary(6547).repeatable,'Warsong Scout Update not classified repeatable')
     assert(not guide.GetQuestSummary(33).repeatable,'Ordinary quest classified repeatable')
 ''')
 print('Actual provider repeatable flags: Warsong Scout Update classified; ordinary quest remains regular.')
+lua.execute(b'''
+    assert(LibQuestieDB.Quest.name(78270)=='Goblin Lockpicks')
+    local rawClass=LibQuestieDB.Quest.Get(78270,'requiredClasses')
+    assert(rawClass==0 or rawClass==8,'Unexpected Goblin Lockpicks class data')
+    local player={active={},skills={},level=23,race=5,class=3,confirmed={[78270]=true}}
+    assert(not guide.test.Eligible(78270,player),'Goblin Lockpicks leaked for Hunter')
+    guide.db.filterAvailable=false
+    assert(not guide.test.Eligible(78270,player),'Broad view restored wrong-class Rogue quest')
+    guide.db.filterAvailable=true; player.class=4
+    assert(guide.test.Eligible(78270,player),'Verified Rogue quest was incorrectly removed')
+    player.confirmed={}
+    for _,race in ipairs({1,5,95,96}) do
+        player.race=race
+        assert(guide.test.Eligible(78270,player),'Unverified faction gate added to Goblin Lockpicks')
+    end
+    assert(LibQuestieDB.Quest.Get(78270,'requiredClasses')==rawClass,'Shared provider was changed')
+''')
+print('Goblin Lockpicks: missing Rogue mask corrected; Hunter/confirmed/broad paths reject it, both-faction Rogues remain eligible.')
+lua.execute(b'''
+    assert(LibQuestieDB.Enum.raceMaskById[95]==4294967296)
+    assert(LibQuestieDB.Enum.raceMaskById[96]==8589934592)
+    local mapping={}
+    local zones=LibQuestieDB.Support.Get('ZoneDB').private
+    guide.test.MergeMap(mapping,zones.areaIdToUiMapId)
+    guide.test.MergeMap(mapping,zones.areaIdToUiMapIdOverride)
+    local mapID=mapping[16593]
+    assert(mapID,'Zephras Isle mapping missing')
+    local oldLevel,oldRace,oldClass,oldFaction=UnitLevel,UnitRace,UnitClass,UnitFactionGroup
+    UnitLevel=function() return 10 end
+    UnitClass=function() return 'Hunter','HUNTER',3 end
+    for _,race in ipairs({95,96}) do
+        UnitRace=function() return 'Skyborne','Skyborne',race end
+        UnitFactionGroup=function() return race==95 and 'Alliance' or 'Horde' end
+        local player={active={},skills={},level=10,race=race,class=3,confirmed={}}
+        assert(guide.test.Eligible(94978,player),'Skyborne hunter Taming the Beast hidden '..race)
+        local found=false
+        guide.BuildMap(mapID,function(id,kind,label,x,y)
+            if id==94978 then
+                found=true
+                assert(kind=='pickup' and label=="Quel'ana Quickgale")
+                assert(math.abs(x-.5956)<.0001 and math.abs(y-.7263)<.0001)
+            end
+        end,Checkpoint)
+        assert(found,'Actual Skyborne hunter trainer location not emitted '..race)
+        for _,pair in ipairs({{94979,94978},{94013,94979},{94050,94013}}) do
+            local id,previous=pair[1],pair[2]
+            local oldCompleted=completed[previous]; completed[previous]=nil
+            player.confirmed={[id]=true}
+            assert(not guide.test.Eligible(id,player),'Skyborne future chain step leaked '..id)
+            completed[previous]=true
+            assert(guide.test.Eligible(id,player),'Native hunter chain failed to unlock '..id)
+            completed[previous]=oldCompleted
+        end
+        local oldTameCompleted=completed[94978]
+        player.confirmed={[94007]=true}; player.active={[94978]=true}
+        assert(guide.test.Eligible(94007,player),'Valid referral hidden during taming')
+        player.active={}; completed[94978]=true
+        assert(guide.test.Eligible(94007,player),'Valid referral hidden after completed taming')
+        local referralVisible=false
+        guide.BuildMap(mapID,function(id) if id==94007 then referralVisible=true end end,Checkpoint)
+        assert(referralVisible,'Completed tame incorrectly removed Elayaa marker')
+        completed[94978]=nil; player.confirmed={[94978]=true}; player.active={[94007]=true}
+        assert(guide.test.Eligible(94978,player),'Unlinked referral incorrectly blocked taming')
+        player.active={}; player.confirmed={}
+        assert(guide.test.Eligible(94978,player),'Optional referral became mandatory')
+        completed[94978]=oldTameCompleted
+        assert(LibQuestieDB.Quest.Get(94007,'breadcrumbForQuestId')==0,'Provider breadcrumb was modified')
+        player.class=1
+        assert(not guide.test.Eligible(94978,player),'Skyborne non-Hunter admitted')
+        player.class=3; player.race=1
+        assert(not guide.test.Eligible(94978,player),'Human admitted to Skyborne quest')
+        player.race=race; player.level=9
+        assert(not guide.test.Eligible(94978,player),'Hunter quest minimum level bypassed')
+    end
+    UnitLevel,UnitRace,UnitClass,UnitFactionGroup=oldLevel,oldRace,oldClass,oldFaction
+    assert(LibQuestieDB.Quest.Get(94978,'requiredRaces')==12884901888,'Provider mask was modified')
+''')
+print('Skyborne Hunters: actual race IDs 95/96 unlock the trainer marker at 59.56,72.63; native class, level and chain gates preserved.')
+print('Skyborne Hunter referral: remains valid after taming starts/completes; no invented breadcrumb restrictions.')
 lua.execute(b'''
     local player={active={},skills={},level=25,race=5,class=2,confirmed={}}
     local sodIDs={78132,78133,78134}
@@ -263,19 +404,21 @@ lua.execute(b'''
     guide.db.filterAvailable=false
     assert(not guide.test.Eligible(98251,player) and not guide.test.Eligible(98252,player),'Broad view bypassed faction mask')
     guide.db.filterAvailable=true
-    for _,race in ipairs({2,5,6,8,34}) do
+    for _,race in ipairs({2,5,6,8,96}) do
         player.race=race
         assert(guide.test.Eligible(98251,player),'Horde race incorrectly rejected: '..race)
     end
 ''')
-print('Screenshot classification: SoD Warrior turn-ins hidden; Horde/Alliance masks verified (including race 34); A Void Path requires turn-in.')
+print('Screenshot classification: SoD Warrior turn-ins hidden; Horde/Alliance masks verified (including actual Skyborne race 96); A Void Path requires turn-in.')
 lua.execute(b'''
     local chain={91858,91859,91860,91861,91862,96204,95034,95036,95111,95125,95126,95140}
     local player={active={},skills={},level=26,race=5,class=2,confirmed={}}
     for index,id in ipairs(chain) do
         assert(LibQuestieDB.Quest.name(id),'Missing Paladin chain record '..id)
         assert(LibQuestieDB.Quest.Get(id,'requiredClasses')==2,'Paladin mask changed '..id)
-        assert(LibQuestieDB.Quest.Get(id,'requiredRaces')==16,'Undead mask changed '..id)
+        local raceMask=LibQuestieDB.Quest.Get(id,'requiredRaces')
+        local widened=id==91859 or id==91860 or id==95111 or id==95125 or id==95126
+        assert(raceMask==16 or (widened and raceMask==8589934770),'Unexpected Paladin race mask '..id)
         if index>1 then
             local previous=chain[index-1]
             local oldCompleted,oldDone=completed[previous],done[previous]
@@ -285,17 +428,324 @@ lua.execute(b'''
             assert(not guide.test.Eligible(id,player),'Paladin objective completion bypassed turn-in '..id)
             player.active[previous]=nil; completed[previous]=true
             assert(guide.test.Eligible(id,player),'Paladin turn-in failed to unlock '..id)
+            player.race=96
+            assert(guide.test.Eligible(id,player)==(raceMask==8589934770),'Native Horde-wide mask not respected '..id)
+            player.race=5
             player.class=1; assert(not guide.test.Eligible(id,player),'Paladin restriction bypassed '..id)
             player.class=2; player.race=1
             assert(not guide.test.Eligible(id,player),'Undead restriction bypassed '..id)
             player.race=5; completed[previous]=oldCompleted; done[previous]=oldDone
         end
-        assert(not LibQuestieDB.Quest.Get(id,'preQuestSingle'),'Provider prerequisite fixture changed '..id)
-        assert(not LibQuestieDB.Quest.Get(id,'preQuestGroup'),'Provider prerequisite fixture changed '..id)
+        CheckNativeRequirements(id)
         LibQuestieDB.Quest.InvalidateCache(id)
     end
 ''')
-print('Undead Paladin chain: all eleven missing prerequisite links require turn-in; confirmed offers respect chain, class and race masks; provider unchanged.')
+print('Undead Paladin chain: eleven prerequisite links require turn-in; confirmed offers respect chain, class and race masks; provider unchanged.')
+lua.execute(b'''
+    for _,id in ipairs({92459,97287}) do
+        local native=LibQuestieDB.Quest.Get(id,'preQuestSingle') or {}
+        if #native==2 then
+            local player={active={},skills={},level=40,race=id==92459 and 95 or 96,class=3,confirmed={[id]=true}}
+            local oldA,oldB=completed[native[1]],completed[native[2]]
+            completed[native[1]]=nil; completed[native[2]]=true
+            assert(guide.test.Eligible(id,player),'Local fallback narrowed native alternative '..id)
+            completed[native[2]]=nil; player.active[native[2]]=true; done[native[2]]=true
+            assert(not guide.test.Eligible(id,player),'Unturned native alternative unlocked '..id)
+            done[native[2]]=nil; completed[native[1]]=oldA; completed[native[2]]=oldB
+            CheckNativeRequirements(id)
+        end
+    end
+''')
+print('Native Dalaran OR alternatives retain precedence over older local fallback gates.')
+lua.execute(b'''
+    local classIDs={1,2,3,4,5,7,8,9,11}
+    local raceIDs={1,2,3,4,5,6,7,8,95,96}
+    local masks=LibQuestieDB.Enum.raceMaskById
+    local function Has(mask,flag) return math.floor(mask/flag)%2==1 end
+    local classFallbacks={[96136]=64,[93797]=128,[98341]=1024,[98404]=1024,[98738]=1024}
+    characterMaskChecks=0
+    for _,id in ipairs(LibQuestieDB.Quest.GetAllIds()) do
+        local class=LibQuestieDB.Quest.Get(id,'requiredClasses') or 0
+        if class==0 then class=classFallbacks[id] or 0 end
+        local race=LibQuestieDB.Quest.Get(id,'requiredRaces') or 0
+        if id==1049 and race==162 then race=8589934754 end
+        local validRace,validClass=1,1
+        for _,r in ipairs(raceIDs) do if race==0 or Has(race,masks[r]) then validRace=r; break end end
+        for _,c in ipairs(classIDs) do if class==0 or Has(class,2^(c-1)) then validClass=c; break end end
+        local player={active={},skills={},level=60,race=validRace,class=validClass,confirmed={[id]=true}}
+        for _,strict in ipairs({true,false}) do
+            guide.db.filterAvailable=strict
+            if class>0 then
+                for _,c in ipairs(classIDs) do
+                    if not Has(class,2^(c-1)) then
+                        player.class=c
+                        assert(not guide.test.Eligible(id,player),'Wrong-class pickup '..id..'/'..c)
+                        characterMaskChecks=characterMaskChecks+1
+                    end
+                end
+            end
+            player.class=validClass
+            if race>0 then
+                for _,r in ipairs(raceIDs) do
+                    if not Has(race,masks[r]) then
+                        player.race=r
+                        assert(not guide.test.Eligible(id,player),'Wrong-race pickup '..id..'/'..r)
+                        characterMaskChecks=characterMaskChecks+1
+                    end
+                end
+            end
+            player.race=validRace
+        end
+        LibQuestieDB.Quest.InvalidateCache(id)
+    end
+    guide.db.filterAvailable=true
+    for id,mask in pairs(classFallbacks) do
+        local raw=LibQuestieDB.Quest.Get(id,'requiredClasses')
+        local player={active={},skills={},level=60,race=96,class=3,confirmed={[id]=true}}
+        assert(not guide.test.Eligible(id,player),'Missing class mask leaked to Hunter '..id)
+        assert(LibQuestieDB.Quest.Get(id,'requiredClasses')==raw,'Shared class mask mutated')
+    end
+    local oldLevel,oldRace,oldClass,oldFaction=UnitLevel,UnitRace,UnitClass,UnitFactionGroup
+    UnitLevel=function() return 35 end
+    UnitRace=function() return 'Skyborne','Skyborne',96 end
+    UnitClass=function() return 'Hunter','HUNTER',3 end
+    UnitFactionGroup=function() return 'Horde' end
+    local function Visible(mapID,id,wanted)
+        local seen=false
+        guide.BuildMap(mapID,function(qid,kind,label,x,y)
+            if qid==id then
+                seen=true
+                if id==1049 then assert(label=='Sage Truthseeker' and math.abs(x-.344)<.0001) end
+            end
+        end,Checkpoint)
+        assert(seen==wanted,'Screenshot pickup wrong '..id)
+    end
+    Visible(1456,1049,true); Visible(1412,96136,false)
+    UnitClass=function() return 'Shaman','SHAMAN',7 end
+    Visible(1412,96136,true)
+    UnitRace=function() return 'Undead','Scourge',5 end
+    Visible(1456,1049,false)
+    UnitRace=function() return 'Skyborne','Skyborne',95 end
+    UnitFactionGroup=function() return 'Alliance' end
+    Visible(1456,1049,false)
+    assert(LibQuestieDB.Quest.Get(1049,'requiredRaces')==162,'Compendium native mask mutated')
+    UnitLevel,UnitRace,UnitClass,UnitFactionGroup=oldLevel,oldRace,oldClass,oldFaction
+''')
+print(f'Character mask audit: {g[b"characterMaskChecks"]} wrong-class/race rejections across all installed quest records, strict/broad and confirmed offers.')
+print('Actual screenshot quests: Skyborne Hunter sees Compendium in Thunder Bluff and no Call of Air; Skyborne Shaman sees Call of Air; Forsaken/Alliance remain excluded.')
+lua.execute(b'''
+    correctedPvPCount=0
+    for id,tag in pairs(guide.questTagOverrides) do
+        assert(guide.IsPvPQuest(id)==(tag==41),'Imported Questie tag correction differs '..id)
+        if tag==41 then
+            correctedPvPCount=correctedPvPCount+1
+            guide.db.hidePvPQuests=true
+            local player={active={},skills={},level=60,race=96,class=3,confirmed={[id]=true}}
+            assert(not guide.test.Eligible(id,player),'Corrected PvP pickup escaped filter '..id)
+            guide.db.filterAvailable=false
+            assert(not guide.test.Eligible(id,player),'Broad mode restored corrected PvP pickup '..id)
+            guide.db.filterAvailable=true
+        end
+    end
+    guide.db.hidePvPQuests=false
+    assert(correctedPvPCount>0)
+''')
+print(f'Questie tag integration: {g[b"correctedPvPCount"]} PvP corrections hidden in strict/broad pickup paths; other corrected tags preserved.')
+lua.execute(b'''
+    local titles={['A Donation of Wool']=true,['A Donation of Silk']=true,
+        ['A Donation of Mageweave']=true,['A Donation of Runecloth']=true,['Additional Runecloth']=true}
+    clothDonationCount=0
+    for _,id in ipairs(LibQuestieDB.Quest.GetAllIds()) do
+        if titles[LibQuestieDB.Quest.name(id)] then
+            assert(guide.clothDonationQuests[id],'Unreviewed cloth donation ID '..id)
+            clothDonationCount=clothDonationCount+1
+            guide.db.hideClothQuests=true
+            for _,strict in ipairs({true,false}) do
+                guide.db.filterAvailable=strict
+                local player={active={},skills={},level=60,race=96,class=3,confirmed={[id]=true}}
+                assert(not guide.test.Eligible(id,player),'Cloth pickup escaped toggle '..id)
+            end
+        end
+        LibQuestieDB.Quest.InvalidateCache(id)
+    end
+    for id in pairs(guide.clothDonationQuests) do
+        assert(titles[LibQuestieDB.Quest.name(id)],'Non-donation included in cloth toggle '..id)
+    end
+    assert(clothDonationCount==50)
+    guide.db.hideClothQuests=false; guide.db.filterAvailable=true
+''')
+print(f'Cloth donation integration: {g[b"clothDonationCount"]} standard/Skyborne donation IDs verified; strict/broad and confirmed offers respect the toggle.')
+lua.execute(b'''
+    local titles={['Conflict at Darkspear Islands']=true,['Darkspear Islands Clash']=true,
+        ['The Battle for Darkspear Islands!']=true}
+    additionalPvPCount=0
+    for _,id in ipairs(LibQuestieDB.Quest.GetAllIds()) do
+        if titles[LibQuestieDB.Quest.name(id)] then
+            assert(guide.additionalPvPQuests[id] and guide.IsPvPQuest(id),'Darkspear variant missed '..id)
+            additionalPvPCount=additionalPvPCount+1
+            guide.db.hidePvPQuests=true
+            for _,strict in ipairs({true,false}) do
+                guide.db.filterAvailable=strict
+                assert(not guide.test.Eligible(id,{active={},skills={},level=60,race=96,class=3,confirmed={[id]=true}}))
+            end
+        end
+        LibQuestieDB.Quest.InvalidateCache(id)
+    end
+    for id in pairs(guide.additionalPvPQuests) do assert(titles[LibQuestieDB.Quest.name(id)]) end
+    assert(additionalPvPCount==18)
+    local oldLevel,oldRace,oldClass,oldFaction=UnitLevel,UnitRace,UnitClass,UnitFactionGroup
+    UnitLevel=function() return 49 end
+    UnitRace=function() return 'Skyborne','Skyborne',96 end
+    UnitClass=function() return 'Hunter','HUNTER',3 end
+    UnitFactionGroup=function() return 'Horde' end
+    guide.db.filterAvailable=false
+    local function Visible(hidden)
+        guide.db.hidePvPQuests=hidden
+        local found={}
+        guide.BuildMap(1454,function(id) found[id]=true end,Checkpoint)
+        assert((not not found[98887])==not hidden,'Actual Conflict pickup filter failed')
+        assert((not not found[98890])==not hidden,'Actual zone-less Conflict variant filter failed')
+    end
+    Visible(false); Visible(true); Visible(false)
+    guide.db.filterAvailable=true; guide.db.hidePvPQuests=false
+    UnitLevel,UnitRace,UnitClass,UnitFactionGroup=oldLevel,oldRace,oldClass,oldFaction
+''')
+print(f'Darkspear Islands PvP integration: {g[b"additionalPvPCount"]} Horde/Alliance mark and victory variants classified; actual Warbringer pickups obey the toggle.')
+lua.execute(b'''
+    assert(LibQuestieDB.Quest.name(95288)=="Smuggler's Paradise")
+    local oldLevel,oldRace,oldClass,oldFaction=UnitLevel,UnitRace,UnitClass,UnitFactionGroup
+    local oldActive,oldDone=active,done
+    local originals={}
+    for _,id in ipairs({93788,93976,94925,94928,95288}) do originals[id]=completed[id]; completed[id]=nil end
+    UnitLevel=function() return 50 end
+    UnitClass=function() return 'Hunter','HUNTER',3 end
+    local mappings={}
+    guide.test.MergeMap(mappings,LibQuestieDB.Support.Get('ZoneDB').private.areaIdToUiMapId)
+    guide.test.MergeMap(mappings,LibQuestieDB.Support.Get('ZoneDB').private.areaIdToUiMapIdOverride)
+    local mapID=mappings[16591]; assert(mapID,'Riverglades mapping missing')
+    for _,race in ipairs({95,96}) do
+        UnitRace=function() return 'Skyborne','Skyborne',race end
+        UnitFactionGroup=function() return race==96 and 'Horde' or 'Alliance' end
+        local previous=race==96 and 93976 or 94928
+        active={}; done={}
+        local function Check(wanted)
+            local found=false
+            guide.BuildMap(mapID,function(id,kind,label,x,y)
+                if id==95288 then
+                    found=true; assert(kind=='pickup' and label=='Friz Frazzlespark')
+                    assert(math.abs(x-.771)<.000001 and math.abs(y-.529)<.000001)
+                end
+            end,Checkpoint)
+            assert(found==wanted,'Actual Smuggler faction lead failed '..race)
+        end
+        Check(false)
+        local hints=table.concat(guide.GetPrerequisiteHints(95288),' ')
+        assert(hints:find(race==96 and 'Kreza Darkthorn' or 'Watcher Cornelius',1,true),'Wrong prerequisite pickup giver')
+        active={previous}; done[previous]=true; Check(false)
+        hints=table.concat(guide.GetPrerequisiteHints(95288),' ')
+        assert(hints:find('Friz Frazzlespark',1,true),'Active lead did not point to turn-in')
+        active={}; completed[previous]=true; Check(true)
+        assert(#guide.GetPrerequisiteHints(95288)==0,'Completed lead still suggested')
+        completed[previous]=nil
+    end
+    for id,value in pairs(originals) do completed[id]=value end
+    for _,id in ipairs({93788,93976,94925,94928,95288}) do
+        if originals[id]==nil then completed[id]=nil end
+        CheckNativeRequirements(id)
+    end
+    UnitLevel,UnitRace,UnitClass,UnitFactionGroup=oldLevel,oldRace,oldClass,oldFaction
+    active,done=oldActive,oldDone
+''')
+print('Smuggler integration: either faction introduction must be turned in; actual Friz pickup and prerequisite pickup/return guidance verified without mutating native data.')
+lua.execute(b'''
+    assert(LibQuestieDB.Quest.name(95183)=='Step One: Rock')
+    assert(LibQuestieDB.Quest.name(95420)=='Land of Giants')
+    local oldLevel,oldRace,oldClass,oldFaction=UnitLevel,UnitRace,UnitClass,UnitFactionGroup
+    local oldCompleted,oldActive,oldDone=completed[95420],active,done
+    UnitLevel=function() return 45 end
+    UnitRace=function() return 'Skyborne','Skyborne',96 end
+    UnitClass=function() return 'Hunter','HUNTER',3 end
+    UnitFactionGroup=function() return 'Horde' end
+    local mappings={}
+    guide.test.MergeMap(mappings,LibQuestieDB.Support.Get('ZoneDB').private.areaIdToUiMapId)
+    guide.test.MergeMap(mappings,LibQuestieDB.Support.Get('ZoneDB').private.areaIdToUiMapIdOverride)
+    local mapID=mappings[16591]
+    local function Check(wanted)
+        local seen={}
+        guide.BuildMap(mapID,function(id,kind,label) if id==95183 then seen[label]=true end end,Checkpoint)
+        assert((not not seen.Hamur)==wanted,'Actual Hamur introduction gate failed')
+        assert((not not seen.Gorgegut)==wanted,'Actual Gorgegut introduction gate failed')
+    end
+    completed[95420]=nil; active={}; done={}; Check(false)
+    local matches=guide.FindQuestMatches('step one',20)
+    assert(#matches==1 and matches[1]==95183,'Actual prerequisite search missed screenshot quest')
+    guide.OpenQuestGuide(95183)
+    assert(QuestLiteOptions.selected==95183 and QuestLiteOptions.tab=='guide')
+    assert(QuestLiteOptions.rows[1].button:IsShown(),'Actual prerequisite route was empty')
+    QuestLiteOptions:Hide()
+    active={95420}; done[95420]=true; Check(false)
+    local hints=table.concat(guide.GetPrerequisiteHints(95183),' ')
+    assert(hints:find('Land of Giants',1,true) and hints:find('Clugfist',1,true),'Introduction turn-in guidance missing')
+    active={}; completed[95420]=true; Check(true)
+    CheckNativeRequirements(95183); CheckNativeRequirements(95420)
+    completed[95420],active,done=oldCompleted,oldActive,oldDone
+    UnitLevel,UnitRace,UnitClass,UnitFactionGroup=oldLevel,oldRace,oldClass,oldFaction
+''')
+print('Step One: Rock integration: both recorded giver markers wait for Land of Giants turn-in; actual native requirements are preserved.')
+lua.execute(b'''
+    local quest=LibQuestieDB.Quest
+    assert(quest.name(3504)=='Betrayed' and quest.Get(3504,'requiredLevel')==44
+        and quest.Get(3504,'questLevel')==53)
+    assert(quest.startedBy(3504)[1][1]==4485)
+    local player={level=45,race=96,class=3,active={},skills={},skillsKnown=true}
+    local oldFilter,oldCompleted=guide.db.filterAvailable,completed[3504]
+    completed[3504]=nil; guide.db.filterAvailable=true
+    assert(not guide.test.Eligible(3504,player),'Unverified Belgrom pickup leaked')
+    guide.db.filterAvailable=false
+    assert(guide.test.Eligible(3504,player),'Betrayed was removed from broad browsing')
+    guide.db.filterAvailable=true; player.confirmed={[3504]=true}
+    assert(guide.test.Eligible(3504,player),'Real offer was not allowed at level 45')
+    player.race=95
+    assert(not guide.test.Eligible(3504,player),'Confirmed offer bypassed faction restriction')
+    assert(guide.GetQuestLevelDescription(3504)=='Quest level 53 | Minimum pickup level: 44')
+    CheckNativeRequirements(3504)
+    completed[3504],guide.db.filterAvailable=oldCompleted,oldFilter
+    quest.InvalidateCache(3504)
+''')
+print('Betrayed integration: native minimum 44/difficulty 53 preserved; strict mode requires an offer and still enforces faction eligibility.')
+lua.execute(b'''
+    local oldLevel,oldActive,oldDone=UnitLevel,active,done
+    UnitLevel=function() return 60 end; active={}; done={}
+    local maps={}
+    guide.test.MergeMap(maps,LibQuestieDB.Support.Get('ZoneDB').private.areaIdToUiMapId)
+    guide.test.MergeMap(maps,LibQuestieDB.Support.Get('ZoneDB').private.areaIdToUiMapIdOverride)
+    for _,id in ipairs({351,485,635,2766}) do
+        local finishers=LibQuestieDB.Quest.finishedBy(id)
+        local entity=finishers[1] and finishers[1][1] and LibQuestieDB.Npc or LibQuestieDB.Object
+        local entityID=entity==LibQuestieDB.Npc and finishers[1][1] or finishers[2][1]
+        local found=false
+        for area,points in pairs(entity.spawns(entityID)) do
+            if maps[area] then
+                guide.BuildMap(maps[area],function(questID,kind,label,x,y,confirmed,zone,sx,sy,dropStarter)
+                    if questID==id then
+                        found=true
+                        assert(kind=='pickup' and dropStarter=='destination')
+                        assert(label==entity.name(entityID),'Zone drop is not labelled with its finisher')
+                        local matched=false
+                        for _,point in ipairs(points) do
+                            if math.abs(x-point[1]/100)<.00001 and math.abs(y-point[2]/100)<.00001 then matched=true end
+                        end
+                        assert(matched,'Destination is not at the native finisher coordinates')
+                    end
+                end,Checkpoint)
+            end
+        end
+        assert(found,'Actual zone-drop destination missing: '..id)
+        CheckNativeRequirements(id)
+    end
+    UnitLevel,active,done=oldLevel,oldActive,oldDone
+''')
+print('Zone-drop destinations: all three OOX quests and Pendant of Myzrael point to native NPC/object finishers without changing pickup eligibility.')
 if sample_horde:
     lua.execute(b'''
         observed={}; function Collect(id,kind,label,x,y,confirmed)
@@ -338,7 +788,7 @@ if sample_horde:
         completed[4921]=true; active[1]=nil
         observed={}; guide.BuildMap(1413,Collect,Checkpoint)
         assert(not observed[4921] and observed[95774], 'Olgra did not unlock after turn-in')
-        assert(not LibQuestieDB.Quest.Get(95774,'preQuestSingle'), 'Provider data was changed')
+        CheckNativeRequirements(95774)
         guide.db.showLowLevel=false; guide.db.levelsBelow=5
         observed={}; guide.BuildMap(1413,Collect,Checkpoint)
         local normal={}; levelFilteredCount=0
@@ -451,4 +901,99 @@ lua.execute(b'''
 ''')
 print(f'Captain Sander: {g[b"sanderRawSources"]} actual source locations condensed to {g[b"sanderMarkers"]} world-map markers.')
 print('Captain Sander minimap: one nearby item-drop source marker, using actual provider data.')
+lua.execute(b'''
+    local count=0
+    for id,row in pairs(guide.questFieldOverrides) do
+        local raw=LibQuestieDB.Quest.Get(id,'questLevel')
+        local expected=raw==row.questLevel.was and row.questLevel.value or raw
+        assert(guide.GetQuestSummary(id).level==expected,'Observed/new-provider level precedence failed '..id)
+        assert(LibQuestieDB.Quest.Get(id,'questLevel')==raw,'Provider level was mutated')
+        count=count+1
+    end
+    assert(count==19)
+    local oldLevel,oldRace,oldClass,oldFaction=UnitLevel,UnitRace,UnitClass,UnitFactionGroup
+    local oldActive,oldDone=active,done
+    UnitLevel=function() return 30 end
+    UnitRace=function() return 'Skyborne','Skyborne',96 end
+    UnitClass=function() return 'Hunter','HUNTER',3 end
+    UnitFactionGroup=function() return 'Horde' end
+    active={}; done={}
+    local function SpawnFingerprint()
+        local rows={}
+        for area,points in pairs(LibQuestieDB.Npc.spawns(14242) or {}) do
+            for _,point in ipairs(points) do rows[#rows+1]=area..':'..point[1]..':'..point[2] end
+        end
+        table.sort(rows); return table.concat(rows,',')
+    end
+    local originalSpawn=SpawnFingerprint()
+    local spawns=LibQuestieDB.Npc.spawns(14242)
+    local expectedX,expectedY=.48,.775
+    if spawns and next(spawns) then
+        assert(spawns[17] and spawns[17][1],'Sulhasa no longer in the Barrens')
+        expectedX,expectedY=spawns[17][1][1]/100,spawns[17][1][2]/100
+    end
+    local found=false
+    guide.BuildMap(1413,function(id,kind,label,x,y)
+        if id==98093 then
+            found=true; assert(kind=='pickup' and label=='Sulhasa')
+            assert(math.abs(x-expectedX)<.000001 and math.abs(y-expectedY)<.000001,'Sulhasa native/fallback precedence failed')
+        end
+    end,Checkpoint)
+    assert(found,'Field to Clear missing its Sulhasa location')
+    assert(SpawnFingerprint()==originalSpawn,'Provider Sulhasa row was modified')
+    active={78127}; done[78127]=true
+    local function Library(mapID,name,wanted)
+        local visible=false
+        guide.BuildMap(mapID,function(id,kind,label)
+            if id==78127 then visible=true; assert(kind=='turnin' and label==name) end
+        end,Checkpoint)
+        assert(visible==wanted,'Wrong library capital for '..name)
+    end
+    Library(1458,'Owen Thadd',true); Library(1453,'Owen Thadd',false)
+    UnitRace=function() return 'Human','Human',1 end
+    UnitFactionGroup=function() return 'Alliance' end
+    Library(1453,'Garion Wendell',true); Library(1458,'Garion Wendell',false)
+    assert(LibQuestieDB.Quest.Get(78127,'finishedBy')[1][1]==211033,'Provider library giver list was modified')
+    UnitLevel,UnitRace,UnitClass,UnitFactionGroup=oldLevel,oldRace,oldClass,oldFaction
+    active,done=oldActive,oldDone
+''')
+print('ForeverDB comparison fixes: 19 guarded level corrections, native-or-fallback Sulhasa pickup, and Horde/Alliance library turn-ins verified; provider unchanged.')
 print('Installed QuestieDB integration passed (offline Lua 5.1).')
+
+lua.execute(b'''
+    local oldLevel=UnitLevel; UnitLevel=function() return 40 end
+    assert(LibQuestieDB.Item.name(4614)=='Pendant of Myzrael')
+    local raw,firstX,firstY=0
+    guide.BuildMap(1417,function(id,kind,label,x,y)
+        if id==635 then raw=raw+1; firstX,firstY=firstX or x,firstY or y end
+    end,Checkpoint)
+    assert(raw>0,'Pendant source fixture missing')
+    WorldMapFrame.mapID=1417; miniMapID=1417; miniPX,miniPY=firstX,firstY
+    guide.RequestMap(nil,'FORCE_REFRESH'); Tick(250)
+    local function Count()
+        local world,mini=0,0
+        for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[635] then world=world+1 end end
+        for _,pin in pairs(guide.testMinimapActive) do if pin.data.quests[635] then mini=mini+1 end end
+        return world,mini
+    end
+    local world,mini=Count(); assert(world>0 and mini>0,'Pendant source markers missing before toggle')
+    guide.db.itemDropLocations=false; guide.RequestMap(); Tick(250)
+    world,mini=Count(); assert(world==0 and mini==0,'Pendant toggle failed on a map')
+    guide.db.itemDropLocations=true; guide.RequestMap(); Tick(250)
+    world,mini=Count(); assert(world>0 and mini>0,'Pendant sources did not return')
+    UnitLevel=oldLevel
+''')
+print('Actual Pendant of Myzrael: source toggle hides/restores world-map and minimap markers.')
+
+lua.execute(b'''
+    local oldLevel=UnitLevel; UnitLevel=function() return 40 end
+    guide.SetQuestHidden(635,true); Tick(250)
+    for _,pin in ipairs(WorldMapFrame.pins) do assert(not pin.quests[635],'Hidden Pendant world marker survived') end
+    for _,pin in pairs(guide.testMinimapActive) do assert(not pin.data.quests[635],'Hidden Pendant minimap marker survived') end
+    guide.SetQuestHidden(635,false); Tick(250)
+    local restored=false
+    for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[635] then restored=true end end
+    assert(restored,'Restored Pendant pickup failed to return')
+    UnitLevel=oldLevel
+''')
+print('Per-quest hiding: actual Pendant pickup removed from both maps and restored, independently of drop-source toggle.')

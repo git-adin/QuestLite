@@ -44,7 +44,17 @@ function ns.InitDatabase()
     return true
 end
 
-local function Get(id, field) return quest.Get(id, field) end
+local function Get(id, field)
+    local value = quest.Get(id, field)
+    local row = ns.questFieldOverrides and ns.questFieldOverrides[id]
+    local correction = row and row[field]
+    -- Retire a correction automatically when a newer provider changes the value.
+    if correction and value == correction.was then return correction.value end
+    row = ns.characterQuestFieldOverrides and ns.characterQuestFieldOverrides[id]
+    correction = row and row[field]
+    if correction and value == correction.was then return correction.value end
+    return value
+end
 
 -- Release just the row read here, using the provider's public lifecycle API.
 -- Do not flush the entire shared cache or mutate provider-owned results.
@@ -60,6 +70,16 @@ local function MaskAllows(mask, id)
     if not mask or mask == 0 or not id then return true end
     -- Forever race masks can exceed 32 bits; bit.band truncates those masks.
     return math.floor(mask / 2 ^ (id - 1)) % 2 == 1
+end
+
+local function RaceAllows(mask, id)
+    if not mask or mask == 0 or not id then return true end
+    -- Race IDs are not necessarily bit positions: Forever Skyborne IDs 95/96
+    -- use bits 32/33. The provider owns this encoding; never truncate to 32 bits.
+    local mapping = api.Enum and api.Enum.raceMaskById
+    local flag = mapping and mapping[id]
+    if not mapping and ns.IsFiniteNumber(id) and id >= 1 and id <= 32 then flag = 2 ^ (id - 1) end
+    return ns.IsFiniteNumber(flag) and flag > 0 and math.floor(mask / flag) % 2 == 1
 end
 
 local function Snapshot()
@@ -147,42 +167,87 @@ end
 local function PolicyRestricted(id)
     local policy = ns.pickupPolicy
     return policy and (policy.collection[id] or policy.event[id]
+        or (policy.offerOnly and policy.offerOnly[id])
         or (policy.hidden and policy.hidden[id])
         or (policy.eventSorts and policy.eventSorts[Get(id, "zoneOrSort")]))
 end
 
-local function ChainRequirementsPass(id, player)
-    for _, predecessor in ipairs((ns.chainPrerequisiteOverrides or {})[id] or {}) do
-        if not Completed(predecessor) then return false end
+-- Share native/fallback precedence between eligibility and on-demand guidance.
+local function PrerequisiteLists(id)
+    local alternatives, group = Get(id, "preQuestSingle"), Get(id, "preQuestGroup")
+    local missing = not (alternatives and #alternatives > 0) and not (group and #group > 0)
+    local oldPatrols = id == 545 and alternatives and #alternatives == 1
+        and alternatives[1] == 544 and not (group and #group > 0)
+    if missing or oldPatrols then
+        return alternatives, group, (ns.chainPrerequisiteOverrides or {})[id],
+            (ns.chainAlternativeOverrides or {})[id]
     end
-    local parent = Get(id, "parentQuest")
-    if parent and parent > 0 and not player.active[parent] then return false end
-    local sinceID = Get(id, "availableStartingWith")
-    if sinceID and sinceID > 0 and not player.active[sinceID] and not Completed(sinceID) then return false end
-    local alternatives = Get(id, "preQuestSingle")
-    if alternatives and #alternatives > 0 then
-        local found = false
-        for _, other in ipairs(alternatives) do if Completed(other) then found = true; break end end
-        if not found then return false end
-    else
-        for _, other in ipairs(Get(id, "preQuestGroup") or {}) do
-            -- Negative group IDs require that exact quest completed; positive
-            -- IDs may also be satisfied by a completed exclusive alternative.
-            local fulfilled = Completed(math.abs(other))
-            if not fulfilled and other > 0 then
-                for _, alternative in ipairs(Get(other, "exclusiveTo") or {}) do
-                    if Completed(alternative) then fulfilled = true; break end
-                end
-                Release(quest, other)
-            end
-            if not fulfilled then return false end
+    return alternatives, group
+end
+
+local function AnyCompleted(ids)
+    for _, id in ipairs(ids or {}) do if Completed(id) then return true end end
+    return false
+end
+
+local function GroupCompleted(other)
+    if Completed(math.abs(other)) then return true end
+    if other > 0 then
+        for _, alternative in ipairs(Get(other, "exclusiveTo") or {}) do
+            if Completed(alternative) then Release(quest, other); return true end
         end
+        Release(quest, other)
+    end
+    return false
+end
+
+local function ChainRequirementsPass(id, player)
+    local alternatives,group,all,any=PrerequisiteLists(id)
+    for _, other in ipairs(all or {}) do if not Completed(other) then return false end end
+    if any and #any>0 and not AnyCompleted(any) then return false end
+    local parent=Get(id,"parentQuest")
+    if parent and parent>0 and not player.active[parent] then return false end
+    local sinceID=Get(id,"availableStartingWith")
+    if sinceID and sinceID>0 and not player.active[sinceID] and not Completed(sinceID) then return false end
+    if alternatives and #alternatives>0 then
+        if not AnyCompleted(alternatives) then return false end
+    else
+        for _, other in ipairs(group or {}) do if not GroupCompleted(other) then return false end end
     end
     return true
 end
 
+local function MinimumLevel(id)
+    local minimum = Get(id, "requiredLevel")
+    if minimum == 0 then
+        -- A zero minimum is missing provider data, not permission at every level.
+        -- Match Questie's conservative fallback until a real NPC offer is seen.
+        local level = Get(id, "questLevel")
+        if type(level) == "number" and level > 0 then return level end
+    end
+    return minimum or 1
+end
+
+local function QuestTag(info) return info.tagID end
+
+function ns.IsPvPQuest(id)
+    if ns.additionalPvPQuests and ns.additionalPvPQuests[id] then return true end
+    local tag = ns.questTagOverrides and ns.questTagOverrides[id]
+    if tag ~= nil then return tag == 41 end
+    if C_QuestLog and type(C_QuestLog.GetQuestTagInfo) == "function" then
+        local info = ns.Safe(C_QuestLog.GetQuestTagInfo, id)
+        if type(info) == "table" then tag = ns.Safe(QuestTag, info) end
+    else
+        tag = ns.Safe(GetQuestTagInfo, id)
+    end
+    -- Unknown or secret tags are not classified. Never guess from quest names.
+    return tag == 41
+end
+
 local function Eligible(id, player)
-    if player.active[id] then return false end
+    if ns.db.hiddenQuests[id] or player.active[id] then return false end
+    if ns.db.hidePvPQuests and ns.IsPvPQuest(id) then return false end
+    if ns.db.hideClothQuests and ns.clothDonationQuests[id] then return false end
     local restriction = ns.questRestrictions and ns.questRestrictions[id]
     if restriction then
         if not MaskAllows(restriction.requiredClasses, player.class) then return false end
@@ -196,7 +261,7 @@ local function Eligible(id, player)
         if type(level) == "number" and level > 0
             and level < player.level - ns.db.levelsBelow then return false end
     end
-    if not MaskAllows(Get(id, "requiredRaces"), player.race)
+    if not RaceAllows(Get(id, "requiredRaces"), player.race)
         or not MaskAllows(Get(id, "requiredClasses"), player.class) then return false end
     -- Mandatory race/class and chain requirements also apply to confirmed offers in strict
     -- mode. Objective completion or acceptance is not prerequisite turn-in.
@@ -207,7 +272,7 @@ local function Eligible(id, player)
     if Completed(id) then return false end
     if ns.db.filterAvailable == false then return true end
     if PolicyRestricted(id) then return false end
-    if (Get(id, "requiredLevel") or 1) > player.level then return false end
+    if MinimumLevel(id) > player.level then return false end
     local maximum = Get(id, "requiredMaxLevel")
     if maximum and maximum > 0 and player.level > maximum then return false end
     local autoRewarded = api.Enum and api.Enum.questFlags and api.Enum.questFlags.AUTO_REWARDED or 1024
@@ -381,7 +446,13 @@ function ns.BuildMap(mapID, emit, checkpoint, stateKey)
                 return
             end
         end
-        Spawns(entity.spawns(entityID), id, kind, fallback or entity.name(entityID), confirmed)
+        local spawns = entity.spawns(entityID)
+        local label = fallback or entity.name(entityID)
+        Spawns(spawns, id, kind, label, confirmed)
+        local observed = entity == api.Npc and ns.npcLocationFallbacks and ns.npcLocationFallbacks[entityID]
+        if observed and (not spawns or not next(spawns)) then
+            Location(observed.map, id, kind, label, observed.x, observed.y, confirmed)
+        end
         Release(entity, entityID)
         checkpoint()
     end
@@ -394,15 +465,43 @@ function ns.BuildMap(mapID, emit, checkpoint, stateKey)
         Release(api.Item, itemID)
         checkpoint()
     end
-    local function Givers(givers, id, kind)
+    local function Givers(givers, id, kind, destination)
         if not givers then return end
-        for _, source in ipairs(givers[1] or {}) do Entity(api.Npc, source, id, kind, nil, true) end
-        for _, source in ipairs(givers[2] or {}) do Entity(api.Object, source, id, kind) end
-        for _, source in ipairs(givers[3] or {}) do
-            dropStarter = true
-            Item(source, id, kind, api.Item.name(source) or "Quest-starting item", {}, 1)
-            dropStarter = nil
+        for _, source in ipairs(givers[1] or {}) do
+            -- Neutral library collection quests can be returned in either capital.
+            -- The current provider omits Owen Thadd for 36 Garion-only records.
+            -- Only redirect an already-ready turn-in for a Horde character.
+            if kind == "turnin" and source == 211033 and ns.pickupPolicy
+                and ns.pickupPolicy.collection[id] and safe(UnitFactionGroup, "player") == "Horde" then
+                source = 211022
+            end
+            Entity(api.Npc, source, id, kind, nil, not destination)
         end
+        for _, source in ipairs(givers[2] or {}) do Entity(api.Object, source, id, kind) end
+        if not destination and (kind ~= "pickup" or ns.db.itemDropLocations) then
+            for _, source in ipairs(givers[3] or {}) do
+                dropStarter = true
+                Item(source, id, kind, api.Item.name(source) or "Quest-starting item", {}, 1)
+                dropStarter = nil
+            end
+        end
+    end
+    local function Pickups(id)
+        local starters = Get(id, "startedBy")
+        if ns.zoneDropDestinations[id] and starters and starters[3] and #starters[3]>0
+            and not (starters[1] and #starters[1]>0) and not (starters[2] and #starters[2]>0) then
+            if not ns.db.itemDropLocations then return end
+            local finishers = Get(id, "finishedBy")
+            if finishers and ((finishers[1] and #finishers[1]>0) or (finishers[2] and #finishers[2]>0)) then
+                -- This is a reference destination, not an NPC offer or a ready
+                -- turn-in. Do not suppress it when that NPC has no pickup.
+                dropStarter = "destination"
+                Givers(finishers, id, "pickup", true)
+                dropStarter = nil
+                return
+            end
+        end
+        Givers(starters, id, "pickup")
     end
     -- Active quests are emitted first, before the longer available-quest scan.
     local activeIDs = {}
@@ -419,7 +518,7 @@ function ns.BuildMap(mapID, emit, checkpoint, stateKey)
     if ns.db.available then
         if stateKey and eligibleCache and eligibleCache.key == stateKey then
             for _, id in ipairs(eligibleCache.ids) do
-                Givers(Get(id, "startedBy"), id, "pickup")
+                Pickups(id)
                 Release(quest, id)
                 checkpoint()
             end
@@ -428,7 +527,7 @@ function ns.BuildMap(mapID, emit, checkpoint, stateKey)
             for _, id in ipairs(quest.GetAllIds()) do
                 if Eligible(id, player) then
                     ids[#ids + 1] = id
-                    Givers(Get(id, "startedBy"), id, "pickup")
+                    Pickups(id)
                 end
                 Release(quest, id)
                 checkpoint()
@@ -444,7 +543,11 @@ function ns.GetQuestSummary(id)
     if not summaries[id] then
         if summaryCount >= 256 then summaries, summaryCount = {}, 0 end
         local restriction = ns.questRestrictions and ns.questRestrictions[id]
+        local minimum = Get(id, "requiredLevel")
         summaries[id] = {name = quest.name(id) or ("Quest #" .. id), level = Get(id, "questLevel") or 0,
+            minimumLevel = MinimumLevel(id), minimumKnown = type(minimum)=="number" and minimum>0,
+            availabilityNote = ns.pickupPolicy.offerOnly and ns.pickupPolicy.offerOnly[id]
+                and "Availability is unverified. A current NPC offer is required in strict mode." or nil,
             classification = restriction and restriction.label,
             repeatable = bit.band(Get(id, "specialFlags") or 0, 1) ~= 0}
         summaryCount = summaryCount + 1
@@ -467,6 +570,10 @@ function ns.GetMapStateKey(characterOnly)
     if not characterOnly then
         parts[#parts + 1] = tostring(ns.db.map)
         parts[#parts + 1] = tostring(ns.db.available)
+        parts[#parts + 1] = tostring(ns.db.itemDropLocations)
+        parts[#parts + 1] = tostring(ns.db.hidePvPQuests)
+        parts[#parts + 1] = tostring(ns.db.hideClothQuests)
+        parts[#parts + 1] = tostring(ns.hiddenQuestRevision or 0)
         parts[#parts + 1] = tostring(ns.db.turnins)
         parts[#parts + 1] = tostring(ns.db.filterAvailable)
         parts[#parts + 1] = tostring(ns.db.showLowLevel)
@@ -490,12 +597,166 @@ function ns.GetMapStateKey(characterOnly)
     return table.concat(parts, ":")
 end
 
+local function QuestLocation(other, player)
+        local active = player.active[other]
+        local givers = Get(other, active and "finishedBy" or "startedBy") or {}
+        for index, entity in ipairs({api.Npc, api.Object}) do
+            for _, entityID in ipairs(givers[index] or {}) do
+                local name = entity.name(entityID) or "Quest giver"
+                for area, points in pairs(entity.spawns(entityID) or {}) do
+                    for _, point in ipairs(points) do
+                        local mapID, dungeon = areaMaps[area], dungeonAreas[area]
+                        if dungeon then Release(entity, entityID); return name .. " (inside " .. dungeon[1] .. ")" end
+                        local info = mapID and safe(C_Map and C_Map.GetMapInfo, mapID)
+                        if mapID and ns.IsFiniteNumber(point[1]) and ns.IsFiniteNumber(point[2])
+                            and point[1]>=0 and point[1]<=100 and point[2]>=0 and point[2]<=100 then
+                            local result = string.format("%s - %s %.1f, %.1f", name,
+                                info and info.name or ("Map " .. mapID), point[1], point[2])
+                            Release(entity, entityID); return result
+                        end
+                    end
+                end
+                Release(entity, entityID)
+                return name .. " (location unknown)"
+            end
+        end
+        local itemID = givers[3] and givers[3][1]
+        if itemID then
+            local name = api.Item.name(itemID) or ("Item #" .. itemID)
+            Release(api.Item, itemID); return "quest-starting item: " .. name
+        end
+        return active and "turn-in location unknown" or "pickup location unknown"
+    end
+
+function ns.GetQuestLocation(id)
+    if not quest then return "Quest database unavailable" end
+    local player=Snapshot()
+    local text=QuestLocation(id,player)
+    Release(quest,id)
+    return text,player.active[id],Completed(id)
+end
+
+-- Called only for Shift details or explicit chat lookup; no full graph/index cache.
+function ns.GetPrerequisiteHints(id)
+    if not quest then return {} end
+    local alternatives,group,all,any=PrerequisiteLists(id)
+    if not ((alternatives and #alternatives>0) or (group and #group>0)
+        or (all and #all>0) or (any and #any>0)) then Release(quest,id); return {} end
+    local player, lines, visited, steps = Snapshot(), {}, {}, {}
+    if player.active[id] then Release(quest,id); return lines end
+    local truncated = false
+    local Walk
+    local function Add(other, depth, alternative)
+        other = math.abs(other)
+        if visited[other] or Completed(other) then return end
+        if #lines>=10 then truncated=true; return end
+        if alternative then visited[other]=true
+        elseif depth<4 then Walk(other, depth+1) else visited[other]=true; truncated=true end
+        if #lines>=10 then truncated=true; return end
+        local action = player.active[other] and (safe(C_QuestLog.IsComplete, other) and "Turn in" or "Finish and turn in") or "Complete"
+        local place=QuestLocation(other,player)
+        steps[#steps+1]={id=other,name=ns.GetQuestSummary(other).name,action=action,alternative=alternative,
+            location=(player.active[other] and "Return to: " or "Pick up: ")..place}
+        lines[#lines+1] = (alternative and "Alternative: " or "") .. action .. " [" .. other .. "] "
+            .. ns.GetQuestSummary(other).name .. " - " .. steps[#steps].location
+        Release(quest, other)
+    end
+    local function Alternatives(ids, depth)
+        if not ids or #ids==0 or AnyCompleted(ids) then return end
+        local candidates={}
+        for _, other in ipairs(ids) do
+            if RaceAllows(Get(other,"requiredRaces"), player.race)
+                and MaskAllows(Get(other,"requiredClasses"), player.class) then candidates[#candidates+1]=other end
+            Release(quest, other)
+        end
+        if #candidates==0 then
+            if #lines<10 then lines[#lines+1]="No matching prerequisite branch in known character data." end
+            return
+        end
+        for _, other in ipairs(candidates) do Add(other,depth,#candidates>1) end
+    end
+    Walk = function(current, depth)
+        if visited[current] then return end
+        visited[current]=true
+        local alternatives,group,required,any=PrerequisiteLists(current)
+        for _, other in ipairs(required or {}) do Add(other,depth,false) end
+        Alternatives(any,depth)
+        if alternatives and #alternatives>0 then Alternatives(alternatives,depth)
+        else
+            for _, other in ipairs(group or {}) do if not GroupCompleted(other) then Add(other,depth,false) end end
+        end
+        Release(quest,current)
+    end
+    Walk(id,1)
+    if truncated then lines[#lines+1]="Earlier steps may be omitted (route limit reached)." end
+    return lines,steps,truncated
+end
+
+function ns.FindQuestMatches(query,limit)
+    if not quest then return {},false end
+    query=(query or ""):match("^%s*(.-)%s*$")
+    limit=limit or 20
+    local id=tonumber(query:match("quest:(%d+)") or query)
+    if id then
+        if ns.IsFiniteNumber(id) and id>0 and id==math.floor(id) and quest.name(id) then
+            Release(quest,id); return {id},false
+        end
+        return {},false
+    end
+    if #query<2 then return {},false end
+    local matches,exact,total,exactCount={}, {},0,0
+    local lower=query:lower()
+    local race=select(3,UnitRace("player"))
+    local class=select(3,UnitClass("player"))
+    for _,other in ipairs(quest.GetAllIds()) do
+        local name=quest.name(other)
+        if name and name:lower():find(lower,1,true) and RaceAllows(Get(other,"requiredRaces"),race)
+            and MaskAllows(Get(other,"requiredClasses"),class) then
+            total=total+1
+            if #matches<limit then matches[#matches+1]=other end
+            if name:lower()==lower then
+                exactCount=exactCount+1
+                if #exact<limit then exact[#exact+1]=other end
+            end
+        end
+        Release(quest,other)
+    end
+    if #exact>0 then return exact,exactCount>limit end
+    return matches,total>limit
+end
+
+function ns.ReportPrerequisites(argument)
+    argument = (argument or ""):match("^%s*(.-)%s*$")
+    local ids, number = {}, tonumber(argument)
+    if number and ns.IsFiniteNumber(number) and number>0 and number==math.floor(number) then
+        if quest.name(number) then ids[1]=number end
+        Release(quest,number)
+    elseif argument~="" then
+        local wanted=argument:lower()
+        for _, other in ipairs(quest.GetAllIds()) do
+            local name=quest.name(other)
+            if name and name:lower()==wanted and #ids<3 then ids[#ids+1]=other end
+            Release(quest,other)
+        end
+    end
+    if #ids==0 then ns.Print("Use /ql prereq <quest ID or exact quest name>."); return end
+    for _, other in ipairs(ids) do
+        ns.Print(ns.GetQuestSummary(other).name .. " [" .. other .. "] - known missing quest turn-ins:")
+        local hints=ns.GetPrerequisiteHints(other)
+        if #hints==0 then ns.Print("No missing quest turn-ins found. Level, faction and server-only conditions may still apply.") end
+        for _, line in ipairs(hints) do ns.Print(line) end
+    end
+end
+
+function ns.GetQuestLevelDescription(id)
+    local summary=ns.GetQuestSummary(id)
+    return string.format("Quest level %s | Minimum pickup level: %s", summary.level,
+        summary.minimumKnown and tostring(summary.minimumLevel) or "unknown")
+end
+
 function ns.ShowQuestDetails(tooltip, id, bodyOnly)
     if not bodyOnly then tooltip:AddLine(quest.name(id) or ("Quest #" .. id), 1, .82, .18, true) end
-    if not bodyOnly then
-    tooltip:AddLine(string.format("Level %s  |  Requires level %s", Get(id, "questLevel") or "?",
-        Get(id, "requiredLevel") or 1), .75, .75, .75)
-    end
+    if not bodyOnly then tooltip:AddLine(ns.GetQuestLevelDescription(id), .75, .75, .75, true) end
     local progress = safe(C_QuestLog.GetQuestObjectives, id)
     if progress and #progress > 0 then
         for _, row in ipairs(progress) do
@@ -503,6 +764,14 @@ function ns.ShowQuestDetails(tooltip, id, bodyOnly)
         end
     else
         for _, text in ipairs(Get(id, "objectivesText") or {}) do tooltip:AddLine(text, .92, .92, .92, true) end
+    end
+    if bodyOnly then tooltip:AddLine(ns.GetQuestLevelDescription(id), .75, .75, .75, true) end
+    local note = ns.GetQuestSummary(id).availabilityNote
+    if note then tooltip:AddLine(note, .65, .8, 1, true) end
+    local hints = ns.GetPrerequisiteHints(id)
+    if #hints>0 then
+        tooltip:AddLine("Missing quest turn-ins:", .65, .8, 1)
+        for _, line in ipairs(hints) do tooltip:AddLine(line, .85, .85, .85, true) end
     end
     Release(quest, id)
 end

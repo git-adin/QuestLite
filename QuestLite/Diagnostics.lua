@@ -74,3 +74,29 @@ function ns.ReportBlockedActions(clear)
             row.combat and "in combat" or "out of combat", row.context))
     end
 end
+
+-- Read-only ownership snapshot. No action-bar hooks, cooldown reads or global
+-- replacements; names identify tainted references, not necessarily root cause.
+function ns.ReportTaintState()
+    if type(issecurevariable) ~= "function" then ns.Print("Taint inspection API unavailable."); return end
+    ns.Print("Action-bar taint snapshot (a secure result does not rule out other taint):")
+    local function Check(label, object, key)
+        local ok, secure, owner
+        if object then ok, secure, owner = pcall(issecurevariable, object, key)
+        else ok, secure, owner = pcall(issecurevariable, key) end
+        if not ok or ns.IsSecret(secure) then ns.Print(label .. ": unavailable"); return end
+        ns.Print(label .. ": " .. (secure and "secure" or "tainted by " .. Text(owner, 100)))
+    end
+    for _, name in ipairs({"ActionButton_UpdateCooldown", "ActionButton_ApplyCooldown",
+        "ActionBarButtonEventsFrame", "ActionBarActionEventsFrame", "MultiBarBottomRightButton2"}) do
+        Check(name, nil, name)
+    end
+    for _, name in ipairs({"ActionBarButtonEventsFrame", "ActionBarActionEventsFrame", "MultiBarBottomRightButton2"}) do
+        local object = _G[name]
+        if object then
+            for _, key in ipairs({"OnEvent", "frames", "cooldown", "action"}) do
+                Check(name .. "." .. key, object, key)
+            end
+        end
+    end
+end

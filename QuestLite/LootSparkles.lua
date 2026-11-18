@@ -31,6 +31,7 @@ local db;
 local sparklesShown;
 local applying = false;
 local pendingAfterCombat = false;
+local cleanupAfterCombat = false;
 
 local function IsEnabled()
 	return db == nil or db.enabled ~= false;
@@ -65,6 +66,7 @@ timerFrame:SetScript("OnUpdate", function(self)
 	if GetTime() >= applyAt then
 		self:Hide();
 		Apply();
+		cleanupAfterCombat = not ns.RestoreLegacySoftTargets(true);
 	end
 end);
 
@@ -80,7 +82,7 @@ local function OnEnabledChanged(_, value)
 		Apply();
 	else
 		pendingAfterCombat = false;
-		timerFrame:Hide();
+		if not db.savedCVars then timerFrame:Hide(); end
 		if InCombatLockdown() then ns.restoreLootAfterCombat = true else SetAll(DISABLED) end;
 		-- Switching off only takes effect after a full game restart (/reload is
 		-- not enough). Told in chat: a shown predicate on a settings initializer
@@ -89,6 +91,11 @@ local function OnEnabledChanged(_, value)
 			print("|cffff8000QuestLite:|r restart the game to remove the sparkles. /reload is not enough.");
 		end
 	end
+end
+
+function ns.SetLootSparklesEnabled(value)
+    db.enabled=value
+    OnEnabledChanged(nil,value)
 end
 
 local function RegisterOptions()
@@ -101,8 +108,6 @@ local function RegisterOptions()
 	setting:SetValueChangedCallback(OnEnabledChanged);
 	Settings.CreateCheckbox(category, setting,
 		"Keeps the game's loot sparkle on, even after a graphics preset turns it off. Your outline mode is left as you set it. Switching this off takes effect after restarting the game.");
-
-	ns.AddSoftTargetOptions(category, db);
 
 	Settings.RegisterAddOnCategory(category);
 end
@@ -123,8 +128,12 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 		end
 	elseif event == "PLAYER_LOGIN" then
 		Apply();
+		cleanupAfterCombat = not ns.RestoreLegacySoftTargets(false);
 		ScheduleApply(5);
 	elseif event == "PLAYER_REGEN_ENABLED" then
+		if cleanupAfterCombat then
+			cleanupAfterCombat = not ns.RestoreLegacySoftTargets(true);
+		end
 		if ns.restoreLootAfterCombat then
 			ns.restoreLootAfterCombat = nil;
 			SetAll(DISABLED);
@@ -140,7 +149,7 @@ end);
 
 function ns.DisableLootSparkles()
     pendingAfterCombat = false;
-    timerFrame:Hide();
+    if not ns.db.savedCVars then timerFrame:Hide(); end
     if InCombatLockdown() then
         ns.restoreLootAfterCombat = true;
     else

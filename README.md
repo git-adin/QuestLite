@@ -3,10 +3,14 @@
 Quest pickup locations, turn-in markers, quest tooltips and loot sparkles for
 **World of Warcraft: Forever**. Leaves quest objective markers to Blizzard.
 
+Version 0.4.0 keeps built-in quest-loot sparkles and removes custom soft-target
+sparkles that could interfere with spell targeting, nameplates and interact icons.
+It restores the interaction settings saved by older QuestLite versions.
+
 ## Download and install
 
 **[Download QuestLite.zip](https://github.com/git-adin/QuestLite/releases/latest/download/QuestLite.zip)**
-· [All releases](https://github.com/git-adin/QuestLite/releases)
+Â· [All releases](https://github.com/git-adin/QuestLite/releases)
 
 1. Close WoW. Download **QuestLite.zip** using the link above.
 2. Extract the ZIP into your WoW installation's `_forever_/Interface/AddOns/`
@@ -17,7 +21,7 @@ Quest pickup locations, turn-in markers, quest tooltips and loot sparkles for
 4. Start WoW and enable **QuestLite** and **QuestieDB** in the character selection
    AddOns list. Disable Questie and Forever Loot Sparkles to avoid duplicate
    markers and competing sparkle settings.
-5. Use `/ql` to adjust options. Hover quest markers for details; hold Shift for more.
+5. Open `/ql` or click a QuestLite map button for the tabbed options window. Left-click quest markers for prerequisites, or search part of a quest name in the Prerequisites tab.
 
 Download the addon ZIP from **Releases**. GitHub's green **Code > Download ZIP**
 button downloads the development repository, which has an extra folder layer.

@@ -15,9 +15,10 @@ local tooltip, hoveredPin
 local displayed, displayedMapID = {}, nil
 local cache, cacheClock, contextRevision = {}, 0, 0
 local displayedStateKey
+local combatDeferred = false
 local invalidatingEvents = {QUEST_TURNED_IN=true, PLAYER_LEVEL_UP=true,
     PLAYER_ENTERING_WORLD=true, SKILL_LINES_CHANGED=true, UPDATE_FACTION=true,
-    SPELLS_CHANGED=true, BAG_UPDATE_DELAYED=true, FORCE_REFRESH=true}
+    SPELLS_CHANGED=true, QUEST_DATA_LOAD_RESULT=true, BAG_UPDATE_DELAYED=true, FORCE_REFRESH=true}
 local icons = {pickup = "Interface\\GossipFrame\\AvailableQuestIcon",
     turnin = "Interface\\GossipFrame\\ActiveQuestIcon"}
 local atlases = {pickup = "QuestNormal", turnin = "QuestTurnin"}
@@ -66,6 +67,7 @@ function Pin:OnLoad()
     self:SetSize(22, 22)
     self:EnableMouse(true)
     self:EnableMouseWheel(false)
+    self:HookScript("OnMouseUp", ns.MarkerMouseUp)
     self.Count:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
     self:SetScalingLimits(1, 1, 1)
 end
@@ -130,6 +132,7 @@ function Pin:OnMouseEnter()
             local summary = ns.GetQuestSummary(id)
             local color = GetQuestDifficultyColor and GetQuestDifficultyColor(summary.level)
             local status = entry.kind == "turnin" and "Complete" or entry.confirmed and "Available"
+                or entry.dropStarter == "destination" and "Item quest destination"
                 or entry.dropStarter and "Item drop" or ns.db.filterAvailable and "Pickup" or "Unfiltered"
             if summary.classification then status = summary.classification .. " | " .. status end
             if summary.repeatable then status = "Repeatable | " .. status end
@@ -137,10 +140,23 @@ function Pin:OnMouseEnter()
                 color and color.r or 1, color and color.g or .85, color and color.b or .2,
                 .75, .75, .75)
             if entry.zone then tip:AddLine("  " .. entry.zone, .65, .7, .75) end
+            if entry.dropStarter == "destination" then
+                tip:AddLine("Turn-in location; obtain the zone-wide quest-starting drop first.", .65, .8, 1, true)
+            end
             if shift then
-                if entry.dropStarter then tip:AddLine("Possible source area; obtain the quest-starting item first.", .65, .8, 1, true) end
+                if entry.dropStarter and entry.dropStarter ~= "destination" then
+                    tip:AddLine("Possible source area; obtain the quest-starting item first.", .65, .8, 1, true)
+                end
                 ns.ShowQuestDetails(tip, id, true)
                 tip:AddLine(string.format("  Location: %.1f, %.1f", entry.x * 100, entry.y * 100), .65, .7, .75)
+            end
+        end
+    end
+    if not shift then
+        for _, id in ipairs(self.ids) do
+            if self.data.quests[id].kind == "pickup" then
+                tip:AddLine("Click: prerequisites  |  Right-click: hide", .65, .8, 1, true)
+                break
             end
         end
     end
@@ -160,7 +176,24 @@ ns.ShowMarkerTooltip = Pin.OnMouseEnter
 ns.HideMarkerTooltip = Pin.OnMouseLeave
 function ns.IsMarkerHovered(pin) return hoveredPin == pin end
 
+local function DeferForCombat()
+    combatDeferred = true
+    worker, job, pendingAt, refreshAfterScan = nil, nil, nil, nil
+    runner:Hide()
+    -- Do not acquire/release MapCanvas pins in combat: acquisition configures
+    -- protected mouse-button passthrough. Hide our existing unprotected frames
+    -- rather than leaving markers from the wrong map visible.
+    for _, data in pairs(displayed) do if data.pin then data.pin:Hide() end end
+    if hoveredPin and hoveredPin.isWorldMapPin then
+        if tooltip then tooltip:Hide() end
+        hoveredPin = nil
+    end
+    ns.mapStatus = "World-map quest markers refresh after combat."
+    if map and map.QuestLiteStatus then map.QuestLiteStatus:SetText(ns.mapStatus) end
+end
+
 local function Clear()
+    if InCombatLockdown() then DeferForCombat(); return end
     worker, job = nil, nil
     if hoveredPin and hoveredPin.isWorldMapPin then
         if tooltip then tooltip:Hide() end
@@ -172,6 +205,7 @@ local function Clear()
 end
 
 local function Publish(snapshot, stateKey)
+    if InCombatLockdown() then DeferForCombat(); return end
     for key, old in pairs(displayed) do
         if not snapshot.pins[key] then map:RemovePin(old.pin); old.pin = nil end
     end
@@ -308,7 +342,12 @@ local function Start()
 end
 
 function ns.RequestMap(_, event)
+    if event == "QUEST_DATA_LOAD_RESULT" and not ns.db.hidePvPQuests then return end
     if not map then return end
+    if event == "PLAYER_REGEN_ENABLED" and combatDeferred and not InCombatLockdown() then
+        combatDeferred = false
+        Clear()
+    end
     if event == "GOSSIP_SHOW" or event == "QUEST_GREETING" or event == "QUEST_DETAIL" then
         if not ns.ObserveQuestOffers(event) then return end
         contextRevision = contextRevision + 1
@@ -318,6 +357,7 @@ function ns.RequestMap(_, event)
     end
     local key = StateKey()
     if ns.RequestMinimap then ns.RequestMinimap(key) end
+    if InCombatLockdown() then DeferForCombat(); return end
     local mapID = map:GetMapID()
     if not map:IsShown() then pendingAt = nil; runner:Hide(); return end
     if not ns.db.map then Clear(); pendingAt = nil; runner:Hide(); return end
@@ -342,6 +382,7 @@ function ns.RequestMap(_, event)
 end
 
 runner:SetScript("OnUpdate", function()
+    if InCombatLockdown() then DeferForCombat(); return end
     if not map or not map:IsShown() then Clear(); runner:Hide(); return end
     if pendingAt then
         if GetTime() < pendingAt then return end
@@ -414,8 +455,9 @@ function ns.InitMap()
     map:AddDataProvider(provider)
     local events = CreateFrame("Frame")
     for _, event in ipairs({"QUEST_LOG_UPDATE", "QUEST_TURNED_IN", "PLAYER_LEVEL_UP",
-        "PLAYER_ENTERING_WORLD", "SKILL_LINES_CHANGED", "UPDATE_FACTION", "SPELLS_CHANGED",
-        "BAG_UPDATE_DELAYED", "GOSSIP_SHOW", "QUEST_GREETING", "QUEST_DETAIL"}) do
+        "PLAYER_ENTERING_WORLD", "SKILL_LINES_CHANGED", "UPDATE_FACTION", "SPELLS_CHANGED", "QUEST_DATA_LOAD_RESULT",
+        "BAG_UPDATE_DELAYED", "GOSSIP_SHOW", "QUEST_GREETING", "QUEST_DETAIL",
+        "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED"}) do
         events:RegisterEvent(event)
     end
     events:SetScript("OnEvent", ns.RequestMap)

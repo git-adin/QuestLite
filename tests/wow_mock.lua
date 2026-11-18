@@ -36,6 +36,17 @@ function methods:SetAtlas(value) self.atlas = value end
 function methods:GetTexture() return self.texture end
 function methods:GetAtlas() return nil end
 function methods:SetText(value) self.text = value end
+function methods:GetText() return self.text or '' end
+function methods:SetWordWrap(value) self.wordWrap=value end
+function methods:SetJustifyH(value) self.justifyH=value end
+function methods:SetHitRectInsets(...) self.hitRectInsets={...} end
+function methods:SetChecked(value) self.checked=value end
+function methods:GetChecked() return self.checked end
+function methods:SetMovable(value) self.movable=value end
+function methods:StartMoving() self.moving=true end
+function methods:StopMovingOrSizing() self.moving=false end
+function methods:SetAutoFocus(value) self.autoFocus=value end
+function methods:ClearFocus() self.focused=false end
 function methods:SetFont() end
 function methods:SetTextColor() end
 function methods:SetBackdrop() end
@@ -162,6 +173,8 @@ LibQuestieDB={Quest=Entity(quests),Npc=Entity(npcs),Object=Entity(objects),Item=
         if name=='QuestieItemDropCorrections' then return mockDropFixes end
         return {private={areaIdToUiMapId='return {[12]=1429,[14]=1411}',areaIdToUiMapIdOverride='return {[14]=1412}'}}
     end}}
+LibQuestieDB.Enum={raceMaskById={[95]=4294967296,[96]=8589934592}}
+for id=1,32 do LibQuestieDB.Enum.raceMaskById[id]=2^(id-1) end
 C_QuestLog={GetNumQuestLogEntries=function() return #active end,
     GetInfo=function(i) return active[i] and {questID=active[i]} end,
     GetQuestObjectives=function(id) return progress[id] end,

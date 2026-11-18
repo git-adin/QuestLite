@@ -41,6 +41,7 @@ local function NewPin()
     pin.Count:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
     pin:SetScript("OnEnter", ns.ShowMarkerTooltip)
     pin:SetScript("OnLeave", ns.HideMarkerTooltip)
+    pin:SetScript("OnMouseUp", ns.MarkerMouseUp)
     return pin
 end
 

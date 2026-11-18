@@ -16,7 +16,7 @@ class AddonTests(unittest.TestCase):
         template = ET.parse(ROOT / 'QuestLite/Pins.xml').getroot()[0]
         self.lua.globals().pinTemplateMouseEnabled = template.attrib.get('enableMouse') == 'true'
         self.ns = self.lua.table(testing=True)
-        for name in ['Core.lua', 'Diagnostics.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'Database.lua', 'DropChances.lua', 'Map.lua', 'Minimap.lua', 'MinimapButton.lua', 'SoftTarget.lua', 'LootSparkles.lua']:
+        for name in ['Core.lua', 'QuestVisibility.lua', 'Diagnostics.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'ForeverDBCorrections.lua', 'Database.lua', 'Options.lua', 'DropChances.lua', 'Map.lua', 'Minimap.lua', 'MinimapButton.lua', 'SoftTargetCleanup.lua', 'LootSparkles.lua']:
             self.lua.execute((ROOT / 'QuestLite' / name).read_text(encoding='utf-8'), 'QuestLite', self.ns)
         self.lua.globals().ns = self.ns
         self.lua.execute("Fire('ADDON_LOADED','QuestLite'); Fire('PLAYER_LOGIN')")
@@ -78,7 +78,7 @@ class AddonTests(unittest.TestCase):
             local opened=0
             Settings.OpenToCategory=function() opened=opened+1 end
             button:GetScript('OnClick')(button)
-            assert(opened==1)
+            assert(QuestLiteOptions:IsShown() and QuestLiteOptions.tab=='filters')
             button:GetScript('OnEnter')(button)
             assert(GameTooltip:IsShown() and GameTooltip:GetOwner()==button)
             button:GetScript('OnLeave')(button)
@@ -113,7 +113,7 @@ class AddonTests(unittest.TestCase):
             local opened=0
             Settings.OpenToCategory=function() opened=opened+1 end
             button:GetScript('OnClick')(button)
-            assert(opened==1)
+            assert(QuestLiteOptions:IsShown() and QuestLiteOptions.tab=='filters')
             button:GetScript('OnEnter')(button)
             assert(GameTooltip:IsShown() and GameTooltip:GetOwner()==button)
             assert(#GameTooltip.lines==2,'World map tooltip advertised minimap dragging')
@@ -122,7 +122,7 @@ class AddonTests(unittest.TestCase):
             local count=#frames; ns.InitMap(); assert(#frames==count)
             settings.map:Change(false); settings.minimapButton:Change(false)
             assert(WorldMapFrame.QuestLiteOptionsButton==button)
-            button:GetScript('OnClick')(button); assert(opened==2)
+            button:GetScript('OnClick')(button); assert(QuestLiteOptions:IsShown() and QuestLiteOptions.tab=='filters')
             sharedLibrary={IsForever=true,Add=function(self,template,kind)
                 assert(template==nil and kind=='Button')
                 self.added=(self.added or 0)+1
@@ -140,6 +140,588 @@ class AddonTests(unittest.TestCase):
             assert(sharedLibrary.added==1 and WorldMapFrame.QuestLiteOptionsButton==sharedLibrary.button)
             assert(type(sharedLibrary.button.Refresh)=='function')
             sharedLibrary.button:Refresh()
+        """)
+
+    def test_custom_options_tabs_apply_settings_and_reuse_the_window(self):
+        self.check("""
+            SlashCmdList.QUESTLITE('')
+            local panel=QuestLiteOptions
+            assert(panel:IsShown() and panel.tab=='filters' and panel.pages.filters:IsShown())
+            assert(not panel.pages.map:IsShown() and not panel.pages.guide:IsShown())
+            panel.checks.hidePvPQuests:SetChecked(true)
+            panel.checks.hidePvPQuests:GetScript('OnClick')(panel.checks.hidePvPQuests)
+            assert(ns.db.hidePvPQuests and panel.checks.hidePvPQuests:GetChecked())
+            panel.plus:GetScript('OnClick')(panel.plus); assert(ns.db.levelsBelow==6)
+            ns.SetOption('levelsBelow',500); assert(ns.db.levelsBelow==80)
+            ns.SetOption('levelsBelow',-1); assert(ns.db.levelsBelow==0)
+            ns.SetOption('levelsBelow',0/0); assert(ns.db.levelsBelow==0)
+            ns.SetOption('hiddenQuests',true); assert(type(ns.db.hiddenQuests)=='table')
+            panel.tabs.map:GetScript('OnClick')(panel.tabs.map)
+            assert(panel.pages.map:IsShown() and not panel.pages.filters:IsShown())
+            ns.SetOption('enabled',false)
+            assert(not ns.db.enabled and cvars.outlineModeShowLootEffectWhenDisabled=='0')
+            assert(ns.db.map and ns.db.minimap,'Sparkle option disabled unrelated features')
+            local count=#frames
+            panel:Hide(); SlashCmdList.QUESTLITE('')
+            assert(#frames==count and QuestLiteOptions==panel,'Options leaked frames')
+            assert(panel.checks.hidePvPQuests.hitRectInsets[2]<0,'Checkbox label is not clickable')
+        """)
+
+    def test_clickable_marker_guide_partial_search_and_step_drilldown(self):
+        self.check("""
+            npcs[10]={name='Quest giver',spawns={[12]={{22,30}}}}
+            quests[1]={name='Rock collection',preQuestSingle={2},startedBy={{10}}}
+            quests[2]={name='Meet the ogres',startedBy={{10}}}
+            ns.db.filterAvailable=false; ns.RequestMap(); Tick(120)
+            local pin=WorldMapFrame.pins[1]
+            pin:GetScript('OnMouseUp')(pin,'LeftButton')
+            assert(QuestLiteQuestPicker.viewing and #QuestLiteQuestPicker.ids==2)
+            for _,button in ipairs(QuestLiteQuestPicker.rows) do
+                if button.questID==1 then button:GetScript('OnClick')(button); break end
+            end
+            local panel=QuestLiteOptions
+            assert(panel.tab=='guide' and panel.selected==1 and not next(ns.db.hiddenQuests))
+            assert(panel.rows[1].button.questID==2 and panel.rows[1].detail.text:find('Quest giver',1,true))
+            panel.rows[1].button:GetScript('OnClick')(panel.rows[1].button)
+            assert(panel.selected==2 and panel.guideInfo.text:find('No missing quest',1,true))
+            panel.search:SetText('collection'); panel.search:GetScript('OnEnterPressed')(panel.search)
+            assert(panel.selected==1,'Partial-name lookup failed')
+            completed[2]=true; Fire('QUEST_TURNED_IN',2)
+            assert(not panel.rows[1].button:IsShown(),'Visible guide did not refresh after turn-in')
+            panel.search:SetText('|Hquest:1:10|h[Rock collection]|h')
+            panel.search:GetScript('OnEnterPressed')(panel.search)
+            assert(panel.selected==1,'Pasted quest link lookup failed')
+            panel.search:SetText('no such quest'); panel.search:GetScript('OnEnterPressed')(panel.search)
+            assert(not panel.selected and panel.guideInfo.text:find('No matching',1,true))
+            EnableMinimapMock(); ns.InitMinimap(); Tick(120)
+            local mini=select(2,next(ns.testMinimapActive))
+            mini.data={quests={[1]={kind='pickup'}}}
+            mini:GetScript('OnMouseUp')(mini,'LeftButton')
+            assert(panel.selected==1,'Minimap click did not open guide')
+        """)
+
+    def test_guide_search_and_route_pages_are_bounded_and_alternatives_stay_choices(self):
+        self.check("""
+            for id=1,30 do quests[id]={name='Many matches '..id} end
+            ns.OpenOptions('guide'); local panel=QuestLiteOptions
+            panel.search:SetText('many matches'); panel.search:GetScript('OnEnterPressed')(panel.search)
+            assert(#panel.results==20 and panel.more and #panel.rows==4)
+            assert(panel.next:IsShown()); panel.next:GetScript('OnClick')(panel.next)
+            assert(panel.page==2)
+            local count=#frames
+            for i=1,5 do ns.OpenOptions('guide') end
+            assert(#frames==count,'Search allocated more UI rows')
+            quests[100]={name='Choose a path',preQuestSingle={101,102}}
+            quests[101]={name='First path',preQuestSingle={103}}
+            quests[102]={name='Second path',preQuestSingle={104}}
+            quests[103]={name='Earlier first'}; quests[104]={name='Earlier second'}
+            ns.OpenQuestGuide(100)
+            local hints,steps=ns.GetPrerequisiteHints(100)
+            assert(#steps==2 and steps[1].alternative and steps[2].alternative,
+                'Mutually alternative branches expanded as cumulative steps')
+            local chosen=panel.rows[1].button.questID
+            panel.rows[1].button:GetScript('OnClick')(panel.rows[1].button)
+            assert(panel.selected==chosen and panel.rows[1].button:IsShown())
+            local before=panel.selected
+            panel.back:GetScript('OnClick')(panel.back)
+            assert(panel.selected==nil and #panel.results==20)
+        """)
+
+    def test_betrayed_requires_current_offer_without_inventing_a_level_or_chain(self):
+        self.check("""
+            UnitLevel=function() return 45 end
+            UnitRace=function() return 'Orc','Orc',2 end
+            UnitFactionGroup=function() return 'Horde' end
+            npcs[4485]={name='Belgrom Rockmaul',spawns={[12]={{22,30}}}}
+            quests[3504]={name='Betrayed',requiredLevel=44,questLevel=53,requiredRaces=2,
+                startedBy={{4485}},finishedBy={{4485}}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(120)
+            local function Check(wanted)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[3504] then world=true end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[3504] then mini=true end end
+                assert(world==wanted and mini==wanted,'Betrayed availability differs between maps')
+            end
+            Check(false)
+            settings.filterAvailable:Change(false); Tick(120); Check(true)
+            settings.filterAvailable:Change(true); Tick(120); Check(false)
+            UnitGUID=function() return 'Creature-0-1-0-0-4485-000001' end
+            C_GossipInfo={GetAvailableQuests=function() return {{questID=3504}} end}
+            Fire('GOSSIP_SHOW'); Tick(120); Check(true)
+            local player={active={},skills={},level=45,race=1,class=1,confirmed={[3504]=true}}
+            assert(not ns.test.Eligible(3504,player),'Offer bypassed Horde restriction')
+            C_GossipInfo.GetAvailableQuests=function() return {} end
+            Fire('GOSSIP_SHOW'); Tick(120); Check(false)
+            active={3504}; done[3504]=true; Fire('QUEST_LOG_UPDATE'); Tick(120); Check(true)
+            assert(quests[3504].requiredLevel==44 and quests[3504].questLevel==53)
+            assert(not quests[3504].preQuestSingle and not quests[3504].preQuestGroup)
+        """)
+
+    def test_quest_guide_and_details_distinguish_pickup_level_from_difficulty(self):
+        self.check("""
+            quests[3504]={name='Betrayed',requiredLevel=44,questLevel=53}
+            local description=ns.GetQuestLevelDescription(3504)
+            assert(description=='Quest level 53 | Minimum pickup level: 44')
+            ns.OpenQuestGuide(3504)
+            local info=QuestLiteOptions.guideInfo.text
+            assert(info:find(description,1,true) and info:find('Availability is unverified',1,true))
+            for _,bodyOnly in ipairs({true,false}) do
+                local tooltip=CreateFrame('GameTooltip')
+                tooltip:SetOwner(UIParent,'ANCHOR_NONE')
+                ns.ShowQuestDetails(tooltip,3504,bodyOnly)
+                local text=table.concat(tooltip.lines,' ')
+                assert(text:find(description,1,true) and text:find('current NPC offer',1,true))
+            end
+            quests[900001]={name='Unknown minimum',questLevel=53,requiredLevel=0}
+            assert(ns.GetQuestLevelDescription(900001):find('Minimum pickup level: unknown',1,true))
+        """)
+
+    def test_zone_wide_starters_use_destinations_on_both_maps_and_keep_item_requirement(self):
+        self.check("""
+            npcs[10]={name='Source creature',spawns={[12]={{70,70}}}}
+            npcs[11]={name='Homing robot',spawns={[12]={{22,30}}}}
+            objects[12]={name='Crystal',spawns={[12]={{23,30}}}}
+            items[20]={name='Beacon',npcDrops={10}}
+            for _,id in ipairs({351,485,635,2766}) do
+                quests[id]={name='Zone drop '..id,questLevel=10,startedBy={{},{},{20}},
+                    finishedBy=id==635 and {{},{12}} or {{11}}}
+            end
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(120)
+            local function Check(wanted,ready)
+                for _,id in ipairs({351,485,635,2766}) do
+                    local world,mini=false,false
+                    for _,pin in ipairs(WorldMapFrame.pins) do
+                        local entry=pin.quests[id]
+                        if entry then
+                            world=true
+                            assert(entry.x<.3 and entry.label~='Source creature')
+                            assert(entry.kind==(ready and 'turnin' or 'pickup'))
+                            assert(ready and entry.dropStarter==nil or not ready and entry.dropStarter=='destination')
+                            pin:OnMouseEnter()
+                            local text=table.concat(QuestLiteTooltip.lines,' ')
+                            if not ready then
+                                assert(text:find('Item quest destination',1,true))
+                                assert(text:find('obtain the zone-wide quest-starting drop first',1,true))
+                                assert(not text:find('Possible source area',1,true))
+                            end
+                        end
+                    end
+                    for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[id] then mini=true end end
+                    assert(world==wanted and mini==wanted,'Zone-drop destination differs between maps')
+                end
+            end
+            Check(true)
+            -- The robot not offering the quest must not hide a reference destination.
+            UnitGUID=function() return 'Creature-0-1-0-0-11-000001' end
+            C_GossipInfo={GetAvailableQuests=function() return {} end}
+            Fire('GOSSIP_SHOW'); Tick(120); Check(true)
+            settings.itemDropLocations:Change(false); Tick(120); Check(false)
+            settings.itemDropLocations:Change(true); Tick(120); Check(true)
+            for _,id in ipairs({351,485,635,2766}) do ns.SetQuestHidden(id,true) end
+            Tick(120); Check(false)
+            for _,id in ipairs({351,485,635,2766}) do ns.SetQuestHidden(id,false) end
+            Tick(120); Check(true)
+            active={351,485,635,2766}; Fire('QUEST_LOG_UPDATE'); Tick(120); Check(false)
+            for _,id in ipairs(active) do done[id]=true end
+            settings.itemDropLocations:Change(false); Tick(120); Check(true,true)
+        """)
+
+    def test_zone_drop_destination_does_not_follow_player_or_reselect_sources_on_refresh(self):
+        self.check("""
+            npcs[10]={name='Source',spawns={[12]={{20,30},{35,30},{70,30}}}}
+            npcs[11]={name='Homing robot',spawns={[12]={{22,30}}}}
+            items[20]={name='Beacon',npcDrops={10}}
+            quests[2766]={name='Find OOX-22/FE!',startedBy={{},{},{20}},finishedBy={{11}}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(120)
+            local function Check(visible)
+                local seen=false
+                for _,pin in pairs(ns.testMinimapActive) do
+                    local entry=pin.data.quests[2766]
+                    if entry then
+                        seen=true
+                        assert(entry.x==.22 and entry.y==.3 and entry.dropStarter=='destination')
+                        assert(entry.label=='Homing robot')
+                    end
+                end
+                assert(seen==visible,'Destination visibility did not follow its actual range')
+                for _,pin in ipairs(WorldMapFrame.pins) do
+                    if pin.quests[2766] then assert(pin.quests[2766].x==.22) end
+                end
+            end
+            Check(true)
+            miniPX=.21; Tick(10); Check(true)
+            miniPX=.35; Tick(10); Check(false)
+            miniPX=.70; ns.RequestMap(nil,'FORCE_REFRESH'); Tick(120); Check(false)
+            miniPX=.20; Tick(10); Check(true)
+            ns.RequestMap(nil,'FORCE_REFRESH'); Tick(120); Check(true)
+        """)
+
+    def test_zone_drop_missing_finisher_falls_back_and_ordinary_drops_keep_sources(self):
+        self.check("""
+            npcs[10]={name='Source',spawns={[12]={{22,30}}}}
+            items[20]={name='Starter',npcDrops={10}}
+            quests[2766]={name='Missing destination',startedBy={{},{},{20}}}
+            quests[900001]={name='Ordinary item quest',startedBy={{},{},{20}},finishedBy={{10}}}
+            ns.RequestMap(); Tick(120)
+            for _,id in ipairs({2766,900001}) do
+                local entry=WorldMapFrame.pins[1].quests[id]
+                assert(entry and entry.dropStarter==true and entry.label=='Starter')
+            end
+        """)
+
+    def test_step_one_rock_waits_for_ogre_introduction_on_both_maps(self):
+        self.check("""
+            npcs[259988]={name='Gorgegut',spawns={[12]={{22,30}}}}
+            npcs[263440]={name='Hamur',spawns={[12]={{24,30}}}}
+            npcs[255829]={name='Clugfist',spawns={[12]={{26,30}}}}
+            quests[95420]={name='Land of Giants',startedBy={{255829}},finishedBy={{255829}}}
+            quests[95183]={name='Step One: Rock',startedBy={{259988,263440}},finishedBy={{263440}}}
+            quests[96026]={name='Step Two: More Rock',startedBy={{263440}},preQuestSingle={95183}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(120)
+            local function Check(wanted)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[95183] then world=true end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[95183] then mini=true end end
+                assert(world==wanted and mini==wanted,'Ogre introduction gating differs between maps')
+            end
+            Check(false)
+            active={95420}; done[95420]=true; Fire('QUEST_LOG_UPDATE'); Tick(120); Check(false)
+            local hints=table.concat(ns.GetPrerequisiteHints(95183),' ')
+            assert(hints:find('Land of Giants',1,true) and hints:find('Clugfist',1,true))
+            local player={active={},skills={},level=60,race=96,class=3,confirmed={[95183]=true}}
+            assert(not ns.test.Eligible(95183,player),'Confirmed offer bypassed mandatory introduction')
+            active={}; completed[95420]=true; Fire('QUEST_TURNED_IN',95420); Tick(120); Check(true)
+            assert(not ns.test.Eligible(96026,player),'Second rock quest unlocked before first turn-in')
+            completed[95420]=nil; active={95183}; done[95183]=true; Fire('QUEST_LOG_UPDATE'); Tick(120)
+            Check(true) -- Ready turn-in remains visible even with an absent legacy prerequisite flag.
+            active={}; done={}; ns.db.filterAvailable=false; ns.RequestMap(); Tick(120); Check(true)
+            quests[95183].preQuestSingle={123}; completed[123]=true; ns.db.filterAvailable=true
+            assert(ns.test.Eligible(95183,player),'Fallback overruled newer native requirement')
+        """)
+
+    def test_prerequisite_guidance_uses_faction_route_pickup_or_turnin_and_name_lookup(self):
+        self.check("""
+            npcs[10]={name='Kreza Darkthorn',spawns={[12]={{59.8,46.0}}}}
+            npcs[11]={name='Friz Frazzlespark',spawns={[12]={{77.1,52.9}}}}
+            npcs[12]={name='Watcher Cornelius',spawns={[12]={{59.5,63.9}}}}
+            quests[93788]={name='Borrowed Blades',startedBy={{10}}}
+            quests[93976]={name='The Goblin Trader',requiredRaces=8589934770,startedBy={{10}},finishedBy={{11}}}
+            quests[94925]={name='A Fur Trade',startedBy={{12}}}
+            quests[94928]={name='A Few Furs for Friz',requiredRaces=4294967373,startedBy={{12}},finishedBy={{11}}}
+            quests[95288]={name="Smuggler's Paradise"}
+            UnitRace=function() return 'Skyborne','Skyborne',96 end
+            local lines=ns.GetPrerequisiteHints(95288)
+            local text=table.concat(lines,' ')
+            assert(#lines==2 and lines[1]:find('Borrowed Blades',1,true) and lines[2]:find('The Goblin Trader',1,true))
+            assert(text:find('Kreza Darkthorn',1,true) and text:find('59.8, 46.0',1,true))
+            assert(not text:find('A Few Furs',1,true),'Opposite faction branch suggested')
+            completed[93788]=true; active={93976}; done[93976]=true
+            text=table.concat(ns.GetPrerequisiteHints(95288),' ')
+            assert(text:find('Turn in',1,true) and text:find('Friz Frazzlespark',1,true))
+            completed[93976]=true; active={}
+            assert(#ns.GetPrerequisiteHints(95288)==0,'Completed lead still listed')
+            completed[93976]=nil; completed[93788]=nil
+            UnitRace=function() return 'Skyborne','Skyborne',95 end
+            text=table.concat(ns.GetPrerequisiteHints(95288),' ')
+            assert(text:find('A Fur Trade',1,true) and text:find('A Few Furs for Friz',1,true))
+            assert(not text:find('The Goblin Trader',1,true))
+            messages={}; SlashCmdList.QUESTLITE("prereq Smuggler's Paradise")
+            assert(table.concat(messages,' '):find('Watcher Cornelius',1,true))
+            local tip=CreateFrame('GameTooltip'); tip.lines={}
+            ns.ShowQuestDetails(tip,95288,true)
+            assert(table.concat(tip.lines,' '):find('Missing quest turn%-ins:'))
+        """)
+
+    def test_prerequisite_guidance_bounds_cycles_and_honors_native_and_exclusive_groups(self):
+        self.check("""
+            quests[1]={name='First',preQuestSingle={2}}
+            quests[2]={name='Second',preQuestSingle={1}}
+            assert(#ns.GetPrerequisiteHints(1)<=11,'Cycle made an unbounded route')
+            for id=1,30 do quests[id]={name='Step '..id,preQuestSingle={id+1}} end
+            local hints=ns.GetPrerequisiteHints(1)
+            assert(#hints<=11 and hints[#hints]:find('limit reached',1,true))
+            quests[95288]={preQuestGroup={200,201}}
+            quests[200]={name='Native first',exclusiveTo={202}}
+            quests[201]={name='Native second'}
+            completed[202]=true; completed[201]=true
+            assert(#ns.GetPrerequisiteHints(95288)==0,'Completed exclusive alternative still listed')
+            local player={active={},skills={},level=60,race=96,class=3,confirmed={[95288]=true}}
+            assert(ns.test.Eligible(95288,player),'Native requirements lost precedence')
+            completed[201]=nil
+            hints=ns.GetPrerequisiteHints(95288)
+            assert(#hints==1 and hints[1]:find('Native second',1,true))
+            assert(not ns.test.Eligible(95288,player))
+        """)
+
+    def test_smugglers_paradise_requires_either_faction_lead_turned_in_and_yields_to_native(self):
+        self.check("""
+            quests[95288]={name="Smuggler's Paradise"}
+            for _,race in ipairs({95,96}) do
+                local player={active={},skills={},level=50,race=race,class=3,confirmed={[95288]=true}}
+                assert(not ns.test.Eligible(95288,player),'Unintroduced character saw Smuggler pickup')
+                local previous=race==96 and 93976 or 94928
+                player.active[previous]=true; done[previous]=true
+                assert(not ns.test.Eligible(95288,player),'Accepted/objective-ready lead bypassed turn-in')
+                player.active={}; completed[previous]=true
+                assert(ns.test.Eligible(95288,player),'One faction lead did not unlock Smuggler pickup')
+                completed[previous]=nil; done[previous]=nil
+            end
+            quests[95288].preQuestSingle={123}; completed[123]=true
+            local player={active={},skills={},level=50,race=96,class=3,confirmed={[95288]=true}}
+            assert(ns.test.Eligible(95288,player),'Stale OR fallback overrode newer native predecessor')
+            quests[95288].preQuestSingle=nil; quests[95288].preQuestGroup={123,124}
+            assert(not ns.test.Eligible(95288,player),'Native AND lost second requirement')
+            completed[124]=true; assert(ns.test.Eligible(95288,player))
+        """)
+
+    def test_smugglers_paradise_chain_transition_reaches_both_maps(self):
+        self.check("""
+            npcs[255897]={name='Friz Frazzlespark',spawns={[12]={{22,30}}}}
+            quests[95288]={name="Smuggler's Paradise",startedBy={{255897}},finishedBy={{255897}}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(120)
+            local function Check(wanted)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[95288] then world=true end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[95288] then mini=true end end
+                assert(world==wanted and mini==wanted,'Smuggler chain differs between maps')
+            end
+            Check(false)
+            active={93976}; done[93976]=true; Fire('QUEST_LOG_UPDATE'); Tick(120); Check(false)
+            completed[93976]=true; active={}; Fire('QUEST_TURNED_IN',93976); Tick(120); Check(true)
+            completed[93976]=nil; active={95288}; done[95288]=true; Fire('QUEST_LOG_UPDATE'); Tick(120)
+            Check(true) -- Ready turn-ins are not filtered by pickup prerequisites.
+            active={}; done={}; ns.db.filterAvailable=false; ns.RequestMap(); Tick(120); Check(true)
+        """)
+
+    def test_darkspear_pvp_variants_without_tags_hide_on_both_maps_and_keep_turnins(self):
+        self.check("""
+            local ids={98887,98888,98889,98890,98891,98893,98895,98896,98897,98898,98899,98901,
+                98903,98904,98905,98906,98907,98908}
+            C_QuestLog.GetQuestTagInfo=function() return {tagID=0} end
+            npcs[15350]={name='Warbringer',spawns={[12]={{22,30}}}}
+            for _,id in ipairs(ids) do
+                quests[id]={name='Battleground quest '..id,startedBy={{15350}},finishedBy={{15350}}}
+                assert(ns.IsPvPQuest(id),'Missing Darkspear variant '..id)
+            end
+            quests[1]={name='Ordinary quest from same NPC',startedBy={{15350}}}
+            assert(not ns.IsPvPQuest(1),'NPC identity incorrectly inferred PvP')
+            assert(not ns.IsPvPQuest(98913),'Unplaced care-package record classified by zone alone')
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(120)
+            assert(WorldMapFrame.pins[1].quests[98890])
+            ns.db.hidePvPQuests=true; ns.RequestMap(); Tick(120)
+            for _,pin in ipairs(WorldMapFrame.pins) do
+                assert(pin.quests[1]); for _,id in ipairs(ids) do assert(not pin.quests[id]) end
+            end
+            for _,pin in pairs(ns.testMinimapActive) do
+                assert(pin.data.quests[1]); for _,id in ipairs(ids) do assert(not pin.data.quests[id]) end
+            end
+            local player={active={},skills={},level=60,race=96,class=3,confirmed={}}
+            for _,strict in ipairs({true,false}) do
+                ns.db.filterAvailable=strict
+                for _,id in ipairs(ids) do
+                    player.confirmed[id]=true
+                    assert(not ns.test.Eligible(id,player),'Offer/broad shortcut restored PvP '..id)
+                end
+            end
+            active={98890}; done[98890]=true; Fire('QUEST_LOG_UPDATE'); Tick(120)
+            assert(WorldMapFrame.pins[1].quests[98890].kind=='turnin')
+            active={}; done={}; Fire('QUEST_LOG_UPDATE'); Tick(120)
+            ns.db.hidePvPQuests=false; ns.RequestMap(); Tick(120)
+            for _,id in ipairs(ids) do assert(WorldMapFrame.pins[1].quests[id],'PvP re-enable lost '..id) end
+        """)
+
+    def test_cloth_donation_toggle_refreshes_both_maps_and_preserves_other_pickups_and_turnins(self):
+        self.check("""
+            npcs[10]={name='Cloth quartermaster',spawns={[12]={{22,30}}}}
+            for _,id in ipairs({7791,7796,99191,99200}) do
+                quests[id]={name='Donation '..id,startedBy={{10}},finishedBy={{10}}}
+            end
+            quests[1]={name='A cloth crafting task',startedBy={{10}}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(120)
+            local key=ns.GetMapStateKey()
+            local function Check(id,wanted)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[id] then world=true end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[id] then mini=true end end
+                assert(world==wanted and mini==wanted,'Cloth toggle failed on a map '..id)
+            end
+            Check(7791,true); Check(7796,true); Check(99191,true); Check(99200,true)
+            SlashCmdList.QUESTLITE('cloth'); Tick(120)
+            assert(ns.db.hideClothQuests and ns.GetMapStateKey()~=key)
+            Check(7791,false); Check(7796,false); Check(99191,false); Check(99200,false); Check(1,true)
+            ns.db.filterAvailable=false
+            local player={active={},skills={},level=60,race=96,class=3,confirmed={[7791]=true}}
+            assert(not ns.test.Eligible(7791,player),'Broad mode or confirmed offer bypassed cloth setting')
+            ns.db.filterAvailable=true
+            active={7791}; done[7791]=true; Fire('QUEST_LOG_UPDATE'); Tick(120)
+            Check(7791,true)
+            active={}; done={}; Fire('QUEST_LOG_UPDATE'); Tick(120)
+            SlashCmdList.QUESTLITE('cloth'); Tick(120)
+            Check(7791,true); Check(7796,true); Check(99191,true); Check(99200,true)
+        """)
+
+    def test_pvp_pickup_option_updates_both_maps_keeps_turnins_and_rechecks_tags(self):
+        self.check("""
+            ns.questTagOverrides={[4]=81,[5]=41}
+            local tags={[1]=41,[2]=81,[4]=41}
+            C_QuestLog.GetQuestTagInfo=function(id) return tags[id] and {tagID=tags[id]} end
+            npcs[10]={name='Giver',spawns={[12]={{22,30}}}}
+            for id=1,5 do quests[id]={name='Quest '..id,startedBy={{10}},finishedBy={{10}}} end
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(120)
+            local key=ns.GetMapStateKey()
+            local function Visible(id,wanted)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[id] then world=true end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[id] then mini=true end end
+                assert(world==wanted and mini==wanted,'PvP option failed on a map '..id)
+            end
+            Visible(1,true); Visible(5,true)
+            SlashCmdList.QUESTLITE('pvp'); Tick(120)
+            assert(ns.db.hidePvPQuests and ns.GetMapStateKey()~=key)
+            Visible(1,false); Visible(2,true); Visible(3,true); Visible(4,true); Visible(5,false)
+            local player={active={},skills={},level=10,race=1,class=1,confirmed={[1]=true}}
+            ns.db.filterAvailable=false
+            assert(not ns.test.Eligible(1,player),'Broad mode or offer bypassed PvP option')
+            ns.db.filterAvailable=true
+            tags[3]=41; Fire('QUEST_DATA_LOAD_RESULT',3,true); Tick(120)
+            Visible(3,false)
+            active={1}; done[1]=true; Fire('QUEST_LOG_UPDATE'); Tick(120)
+            Visible(1,true)
+            active={}; done={}; Fire('QUEST_LOG_UPDATE'); Tick(120)
+            SlashCmdList.QUESTLITE('pvp'); Tick(120)
+            Visible(1,true); Visible(3,true); Visible(5,true)
+        """)
+
+    def test_pvp_tag_legacy_unknown_errors_and_secret_values_are_safe(self):
+        self.check("""
+            ns.questTagOverrides={}
+            GetQuestTagInfo=function(id) return id==1 and 41 or 81,'tag' end
+            C_QuestLog.GetQuestTagInfo=nil
+            assert(ns.IsPvPQuest(1) and not ns.IsPvPQuest(2))
+            C_QuestLog.GetQuestTagInfo=function() return nil end
+            assert(not ns.IsPvPQuest(1),'Nil modern tag was guessed from legacy data')
+            C_QuestLog.GetQuestTagInfo=function() error('unavailable') end
+            assert(not ns.IsPvPQuest(1))
+            C_QuestLog.GetQuestTagInfo=function() return {tagID=41} end
+            issecretvalue=function(value) return value==41 end
+            assert(not ns.IsPvPQuest(1),'Secret tag used for a comparison')
+        """)
+
+    def test_marker_hide_and_restore_refresh_both_maps_keep_other_quests_and_turnins(self):
+        self.check("""
+            npcs[10]={name='Giver',spawns={[12]={{22,30},{23,30}}}}
+            quests[1]={name='Keep quest',startedBy={{10}}}
+            quests[2]={name='Hide quest',startedBy={{10}},finishedBy={{10}}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(120)
+            local pin=WorldMapFrame.pins[1]
+            pin:GetScript('OnMouseUp')(pin,'RightButton')
+            assert(QuestLiteQuestPicker:IsShown() and #QuestLiteQuestPicker.ids==2)
+            for _,button in ipairs(QuestLiteQuestPicker.rows) do
+                if button.questID==2 then button:GetScript('OnClick')(button); break end
+            end
+            Tick(120)
+            assert(ns.db.hiddenQuests[2] and not ns.db.hiddenQuests[1])
+            for _,p in ipairs(WorldMapFrame.pins) do assert(p.quests[1] and not p.quests[2]) end
+            for _,p in pairs(ns.testMinimapActive) do assert(p.data.quests[1] and not p.data.quests[2]) end
+            ns.db.filterAvailable=false; ns.RequestMap(); Tick(120)
+            for _,p in ipairs(WorldMapFrame.pins) do assert(not p.quests[2],'Broad mode restored user-hidden quest') end
+            active={2}; done[2]=true; Fire('QUEST_LOG_UPDATE'); Tick(120)
+            local ready=false
+            for _,p in ipairs(WorldMapFrame.pins) do if p.quests[2] then ready=true; assert(p.quests[2].kind=='turnin') end end
+            assert(ready,'Manual pickup hiding removed a ready turn-in')
+            active={}; done={}; Fire('QUEST_LOG_UPDATE'); Tick(120)
+            SlashCmdList.QUESTLITE('hidden')
+            assert(QuestLiteQuestPicker.rows[1].questID==2 and QuestLiteQuestPicker.restoring)
+            QuestLiteQuestPicker.rows[1]:GetScript('OnClick')(QuestLiteQuestPicker.rows[1]); Tick(120)
+            assert(not ns.db.hiddenQuests[2])
+            local found=false
+            for _,p in ipairs(WorldMapFrame.pins) do if p.quests[2] then found=true end end
+            assert(found,'Restoring did not refresh cached markers')
+            local mini=select(2,next(ns.testMinimapActive))
+            mini:GetScript('OnMouseUp')(mini,'RightButton')
+            assert(QuestLiteQuestPicker:IsShown(),'Minimap did not open picker')
+        """)
+
+    def test_hide_picker_pages_are_bounded_and_single_shift_click_has_undo(self):
+        self.check("""
+            npcs[10]={name='Crowded giver',spawns={[12]={{22,30}}}}
+            for id=1,30 do quests[id]={name=string.format('Quest %02d',id),startedBy={{10}}} end
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(120)
+            local pin=WorldMapFrame.pins[1]
+            pin:GetScript('OnMouseUp')(pin,'RightButton')
+            assert(#QuestLiteQuestPicker.rows==12 and #QuestLiteQuestPicker.ids==30)
+            local nextButton
+            for _,frame in ipairs(frames) do if frame.text=='Next' then nextButton=frame end end
+            assert(nextButton); nextButton:GetScript('OnClick')(nextButton)
+            assert(QuestLiteQuestPicker.page==2 and QuestLiteQuestPicker.rows[1].questID==13)
+            local before=#frames
+            pin:GetScript('OnMouseUp')(pin,'RightButton')
+            assert(#frames==before,'Picker leaked frames')
+            QuestLiteQuestPicker.rows[1]:GetScript('OnClick')(QuestLiteQuestPicker.rows[1]); Tick(120)
+            SlashCmdList.QUESTLITE('unhide all'); Tick(120)
+            assert(not next(ns.db.hiddenQuests))
+            pin=WorldMapFrame.pins[1]
+            pin.data={quests={[1]={kind='pickup'}}}
+            IsShiftKeyDown=function() return true end
+            pin:GetScript('OnMouseUp')(pin,'LeftButton'); Tick(120)
+            assert(ns.db.hiddenQuests[1])
+            SlashCmdList.QUESTLITE('unhide 1'); Tick(120)
+            assert(not ns.db.hiddenQuests[1])
+            pin=WorldMapFrame.pins[1]; pin.data={quests={[1]={kind='turnin'}}}
+            pin:GetScript('OnMouseUp')(pin,'LeftButton')
+            assert(not ns.db.hiddenQuests[1],'Turn-in click hid a pickup')
+        """)
+
+    def test_hidden_quest_settings_validate_persist_and_defer_map_mutation_in_combat(self):
+        self.check("""
+            ns.db=nil; QuestLiteDB={hiddenQuests={[635]=true,[2]=false,foo=true,[-1]=true,[1.5]=true}}
+            ns.LoadSettings()
+            assert(ns.db.hiddenQuests[635] and not ns.db.hiddenQuests.foo and not ns.db.hiddenQuests[2])
+            assert(not ns.db.hiddenQuests[-1] and not ns.db.hiddenQuests[1.5])
+            ns.db=nil; ns.LoadSettings(); assert(ns.db.hiddenQuests[635])
+            npcs[10]={spawns={[12]={{22,30}}}}
+            quests[1]={startedBy={{10}}}; ns.RequestMap(); Tick(120)
+            local acquire=WorldMapFrame.AcquirePin
+            WorldMapFrame.AcquirePin=function(self,...) assert(not combat); return acquire(self,...) end
+            combat=true; Fire('PLAYER_REGEN_DISABLED')
+            ns.SetQuestHidden(1,true); Tick(120); assert(ns.db.hiddenQuests[1])
+            combat=false; Fire('PLAYER_REGEN_ENABLED'); Tick(120)
+            assert(#WorldMapFrame.pins==0)
+            ns.SetQuestHidden(1,false); Tick(120); assert(#WorldMapFrame.pins==1)
+        """)
+
+    def test_item_drop_location_toggle_refreshes_both_maps_and_keeps_npc_turnins(self):
+        self.check("""
+            npcs[10]={name='Drop source',spawns={[12]={{22,30}}}}
+            npcs[11]={name='Normal giver',spawns={[12]={{22,30}}}}
+            items[4614]={name='Pendant of Myzrael',npcDrops={10}}
+            items[100]={name='Contained starter',itemDrops={4614}}
+            quests[635]={name='Crystal in the Mountains',startedBy={{},{},{4614}},finishedBy={{11}}}
+            quests[2]={name='Mixed sources',startedBy={{11},{},{100}}}
+            quests[3]={name='Ordinary pickup',startedBy={{11}}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(150)
+            local initialKey=ns.GetMapStateKey()
+            local function Count(id)
+                local world,mini=0,0
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[id] then world=world+1 end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[id] then mini=mini+1 end end
+                return world,mini
+            end
+            assert(Count(635)>0)
+            SlashCmdList.QUESTLITE('drops'); Tick(150)
+            assert(not ns.db.itemDropLocations and ns.GetMapStateKey()~=initialKey)
+            local world,mini=Count(635); assert(world==0 and mini==0,'Drop markers survived cached refresh')
+            world,mini=Count(2); assert(world>0 and mini>0,'Mixed quest lost its NPC pickup')
+            world,mini=Count(3); assert(world>0 and mini>0,'Normal pickup disappeared')
+            local dropReads=0; local original=LibQuestieDB.Item.npcDrops
+            LibQuestieDB.Item.npcDrops=function(...) dropReads=dropReads+1; return original(...) end
+            ns.BuildMap(1429,function() end,function() end)
+            assert(dropReads==0,'Hidden item sources were still expanded')
+            active={635}; done[635]=true; Fire('QUEST_LOG_UPDATE'); Tick(150)
+            world,mini=Count(635); assert(world>0 and mini>0,'Ready turn-in hidden with drop sources')
+            active={}; done={}; Fire('QUEST_LOG_UPDATE'); Tick(150)
+            SlashCmdList.QUESTLITE('drops'); Tick(150)
+            world,mini=Count(635); assert(world>0 and mini>0,'Re-enabled sources did not return')
         """)
 
     def test_item_drop_world_markers_are_bounded_without_losing_nearby_minimap_sources(self):
@@ -220,6 +802,551 @@ class AddonTests(unittest.TestCase):
             count,pin=Find(1)
             assert(count==1 and pin.data.x==.8,'Distant local source lost to world-map reduction')
             assert(scans==scansBefore,'Movement triggered database scans')
+        """)
+
+    def test_skyborne_actual_race_ids_use_provider_masks_on_both_maps(self):
+        self.check("""
+            LibQuestieDB.Enum=LibQuestieDB.Enum or {}
+            LibQuestieDB.Enum.raceMaskById={[1]=1,[5]=16,[95]=4294967296,[96]=8589934592}
+            UnitLevel=function() return 10 end
+            UnitClass=function() return 'Hunter','HUNTER',3 end
+            local race=95
+            UnitRace=function() return 'Skyborne','Skyborne',race end
+            UnitFactionGroup=function() return race==95 and 'Alliance' or 'Horde' end
+            npcs[252389]={name="Quel'ana Quickgale",friendlyToFaction='AH',spawns={[12]={{22,30}}}}
+            quests[94978]={name='Taming the Beast',questLevel=10,requiredLevel=10,
+                requiredClasses=4,requiredRaces=12884901888,startedBy={{252389}},finishedBy={{252389}}}
+            quests[2]={name='Alliance quest',requiredRaces=4294967296,startedBy={{252389}}}
+            quests[3]={name='Horde quest',requiredRaces=8589934592,startedBy={{252389}}}
+            quests[94979]={name='Later taming step',requiredClasses=4,requiredRaces=12884901888,
+                preQuestSingle={94978},startedBy={{252389}}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(100)
+            local function Check(id,wanted)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[id] then world=true end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[id] then mini=true end end
+                assert(world==wanted and mini==wanted,'Skyborne visibility wrong '..id..' race '..race)
+            end
+            Check(94978,true); Check(94979,false); Check(2,true); Check(3,false)
+            race=96; ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            Check(94978,true); Check(94979,false); Check(2,false); Check(3,true)
+            for _,id in ipairs({95,96}) do
+                local player={active={},skills={},level=10,race=id,class=3,confirmed={[94978]=true}}
+                assert(ns.test.Eligible(94978,player),'Confirmed Skyborne hunter rejected')
+                player.class=1; assert(not ns.test.Eligible(94978,player),'Wrong class admitted')
+                player.class=3; player.race=1
+                assert(not ns.test.Eligible(94978,player),'Non-Skyborne admitted')
+            end
+            settings.filterAvailable:Change(false); Tick(100)
+            Check(94978,true); Check(2,false); Check(3,true)
+            for _,raceID in ipairs({33,34,97}) do
+                local player={active={},skills={},level=10,race=raceID,class=3}
+                assert(not ns.test.Eligible(94978,player),'Bit position treated as a playable race ID')
+            end
+        """)
+
+    def test_skyborne_hunter_referral_remains_valid_after_completed_pet_training(self):
+        self.check("""
+            UnitLevel=function() return 10 end
+            UnitRace=function() return 'Skyborne','Skyborne',95 end
+            UnitClass=function() return 'Hunter','HUNTER',3 end
+            npcs[254084]={name='Elayaa Easewind',spawns={[12]={{22,30}}}}
+            npcs[252389]={name="Quel'ana Quickgale",spawns={[12]={{24,30}}}}
+            quests[94007]={name='Taming the Beast referral',requiredRaces=12884901888,requiredClasses=4,
+                startedBy={{254084}},finishedBy={{252389}}}
+            quests[94978]={name='Taming the Beast first tame',requiredRaces=12884901888,requiredClasses=4,
+                startedBy={{252389}},finishedBy={{252389}}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(100)
+            local function Check(id,wanted)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[id] then world=true end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[id] then mini=true end end
+                assert(world==wanted and mini==wanted,'Wrong Hunter breadcrumb visibility '..id)
+            end
+            Check(94007,true); Check(94978,true) -- The referral may be skipped.
+            active={94007}; done[94007]=true; Fire('QUEST_LOG_UPDATE'); Tick(100)
+            Check(94007,true); Check(94978,true) -- No native restriction links the two.
+            active={}; completed[94007]=true; Fire('QUEST_TURNED_IN',94007); Tick(100)
+            Check(94007,false); Check(94978,true)
+            completed={}; active={94978}; Fire('QUEST_LOG_UPDATE'); Tick(100)
+            Check(94007,true); Check(94978,false)
+            local player={active={[94978]=true},skills={},level=10,race=95,class=3,confirmed={[94007]=true}}
+            assert(ns.test.Eligible(94007,player),'Confirmed valid referral hidden during taming')
+            player.active={}; completed[94978]=true
+            assert(ns.test.Eligible(94007,player),'Completed tame incorrectly hid valid referral')
+            completed[94979]=true; completed[94013]=true; completed[94050]=true
+            active={}; Fire('QUEST_TURNED_IN',94978); Tick(100)
+            Check(94007,true); Check(94978,false)
+            settings.filterAvailable:Change(false); Tick(100)
+            Check(94007,true)
+            settings.filterAvailable:Change(true); Tick(100)
+            Check(94007,true)
+            completed={}; player.confirmed={[94978]=true}; player.active={[94007]=true}
+            assert(ns.test.Eligible(94978,player),'Invented breadcrumb restriction blocked taming')
+            player.active={}; assert(ns.test.Eligible(94978,player),'Referral incorrectly became mandatory')
+        """)
+
+    def test_legacy_soft_target_cleanup_restores_owned_values_and_late_sync(self):
+        self.check("""
+            ns.db.savedCVars={SoftTargetInteract='0',SoftTargetNameplateInteract='0',
+                SoftTargetInteractRange='10',SoftTargetInteractArc='0',SoftTargetInteractOnlyInRange='1',
+                SoftTargetIconGameObject='0'}
+            ns.db.sparkleOre=true; ns.db.sparkleOther=true
+            cvars.SoftTargetInteract='3'; cvars.SoftTargetNameplateInteract='1'
+            cvars.SoftTargetInteractRange='60'; cvars.SoftTargetInteractArc='2'
+            cvars.SoftTargetInteractOnlyInRange='0'; cvars.SoftTargetIconGameObject='1'
+            ns.db=nil; ns.LoadSettings()
+            assert(ns.db.sparkleOre==nil and ns.db.sparkleOther==nil)
+            Fire('PLAYER_LOGIN')
+            assert(cvars.SoftTargetInteract=='0' and cvars.SoftTargetInteractRange=='10')
+            assert(cvars.SoftTargetNameplateInteract=='0' and cvars.SoftTargetIconGameObject=='0')
+            assert(ns.db.savedCVars,'Originals discarded before delayed sync pass')
+            cvars.SoftTargetInteract='3'; cvars.SoftTargetInteractRange='60'
+            Tick(110)
+            assert(cvars.SoftTargetInteract=='0' and cvars.SoftTargetInteractRange=='10')
+            assert(ns.db.savedCVars==nil and cvars.outlineModeShowLootEffectWhenDisabled=='1')
+            local before=#writes; Tick(200); assert(#writes==before,'Cleanup became persistent polling')
+        """)
+
+    def test_legacy_soft_target_cleanup_preserves_player_edits_and_retries_failed_writes(self):
+        self.check("""
+            ns.db.savedCVars={SoftTargetInteract='0',SoftTargetInteractRange='10',
+                SoftTargetIconGameObject='0',unrelatedSetting='9'}
+            cvars.SoftTargetInteract='2'; cvars.SoftTargetInteractRange='35'
+            cvars.SoftTargetIconGameObject='1'; cvars.unrelatedSetting='1'
+            local setter=C_CVar.SetCVar
+            C_CVar.SetCVar=function() error('synthetic write failure') end
+            ns.RestoreLegacySoftTargets(true)
+            assert(cvars.SoftTargetInteract=='2' and cvars.SoftTargetInteractRange=='35')
+            assert(ns.db.savedCVars.SoftTargetIconGameObject=='0','Failed restoration lost original')
+            assert(cvars.unrelatedSetting=='1')
+            C_CVar.SetCVar=setter; ns.RestoreLegacySoftTargets(true)
+            assert(cvars.SoftTargetIconGameObject=='0' and ns.db.savedCVars==nil)
+        """)
+
+    def test_legacy_soft_target_cleanup_defers_until_combat_ends_even_with_loot_disabled(self):
+        self.check("""
+            ns.db.enabled=false; ns.db.savedCVars={SoftTargetInteract='0',SoftTargetNameplateInteract='0'}
+            cvars.SoftTargetInteract='3'; cvars.SoftTargetNameplateInteract='1'
+            combat=true; local before=#writes; Fire('PLAYER_LOGIN'); Tick(120)
+            assert(#writes==before and ns.db.savedCVars)
+            combat=false; Fire('PLAYER_REGEN_ENABLED')
+            assert(cvars.SoftTargetInteract=='0' and cvars.SoftTargetNameplateInteract=='0')
+            assert(ns.db.savedCVars==nil)
+        """)
+
+    def test_cleanup_final_pass_survives_disabling_builtin_sparkles(self):
+        self.check("""
+            ns.db.savedCVars={SoftTargetInteract='0'}; cvars.SoftTargetInteract='3'
+            Fire('PLAYER_LOGIN')
+            settings.enabled:Change(false)
+            cvars.SoftTargetInteract='3'; Tick(110)
+            assert(cvars.SoftTargetInteract=='0' and ns.db.savedCVars==nil)
+            assert(cvars.outlineModeShowLootEffectWhenDisabled=='0')
+            ns.db.savedCVars={SoftTargetInteract=false,SoftTargetInteractRange=math.huge,
+                SoftTargetInteractArc={},SoftTargetIconGameObject='SECRET',unrelatedSetting='2'}
+            issecretvalue=function(value) return value=='SECRET' end
+            cvars.unrelatedSetting='1'; local before=#writes
+            ns.RestoreLegacySoftTargets(true)
+            assert(#writes==before and ns.db.savedCVars==nil)
+            assert(cvars.unrelatedSetting=='1')
+        """)
+
+    def test_walton_pickups_wait_for_delivery_and_investigation_turnins(self):
+        self.check("""
+            UnitLevel=function() return 18 end
+            UnitRace=function() return 'Undead','Scourge',5 end
+            npcs[261366]={name='Walton',spawns={[12]={{22,30}}}}
+            quests[95495]={name='The Hermit Tanner',finishedBy={{261366}}}
+            quests[95621]={name='Trouble in the Valley',questLevel=18,requiredLevel=14,
+                requiredRaces=8589934770,startedBy={{261366}},finishedBy={{261366}}}
+            quests[95508]={name='Unwelcome Guests',questLevel=18,requiredLevel=14,
+                requiredRaces=8589934770,startedBy={{261366}},finishedBy={{261366}}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(100)
+            local function Check(id,wanted)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[id] then world=true end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[id] then mini=true end end
+                assert(world==wanted and mini==wanted,'Walton chain visibility wrong '..id)
+            end
+            Check(95621,false); Check(95508,false)
+            active={95495}; done[95495]=true; Fire('QUEST_LOG_UPDATE'); Tick(100)
+            Check(95495,true); Check(95621,false); Check(95508,false)
+            completed[95495]=true; active={}; Fire('QUEST_TURNED_IN',95495); Tick(100)
+            Check(95621,true); Check(95508,false)
+            active={95621}; done[95621]=true; Fire('QUEST_LOG_UPDATE'); Tick(100)
+            Check(95621,true); Check(95508,false)
+            completed[95621]=true; active={}; Fire('QUEST_TURNED_IN',95621); Tick(100)
+            Check(95621,false); Check(95508,true)
+            completed={}; ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            settings.filterAvailable:Change(false); Tick(100)
+            Check(95621,true); Check(95508,true)
+            settings.filterAvailable:Change(true); Tick(100)
+            Check(95621,false); Check(95508,false)
+            local player={active={},skills={},level=18,race=5,class=1,confirmed={[95621]=true,[95508]=true}}
+            assert(not ns.test.Eligible(95621,player) and not ns.test.Eligible(95508,player))
+        """)
+
+    def test_foreverdb_level_corrections_are_guarded_and_used_by_both_maps(self):
+        self.check("""
+            npcs[10]={name='Giver',spawns={[12]={{22,30}}}}
+            for id,row in pairs(ns.questFieldOverrides) do
+                quests[id]={name='Observed quest '..id,questLevel=row.questLevel.was,startedBy={{10}}}
+                assert(ns.GetQuestSummary(id).level==row.questLevel.value)
+                assert(quests[id].questLevel==row.questLevel.was,'Provider row was mutated')
+            end
+            UnitLevel=function() return 15 end
+            ns.db.showLowLevel=false; ns.db.levelsBelow=5
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(100)
+            local function Contains(id)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[id] then world=true end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[id] then mini=true end end
+                return world and mini
+            end
+            assert(Contains(91732) and Contains(91723),'Updated level cutoff did not reach both maps')
+            quests[91732].questLevel=6 -- A future provider changed its value again.
+            ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            assert(not Contains(91732),'Stale correction overrode a newer provider value')
+            quests[91723].questLevel=-1
+            ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            assert(Contains(91723),'Scaling quest was assigned a fixed cutoff')
+        """)
+
+    def test_verified_character_mask_fallbacks_preserve_native_updates(self):
+        self.check("""
+            local cases={{96136,7,64},{93797,8,128},{98341,11,1024},{98404,11,1024},{98738,11,1024}}
+            for _,case in ipairs(cases) do
+                local id,wanted,mask=case[1],case[2],case[3]
+                quests[id]={requiredClasses=0}
+                for _,strict in ipairs({true,false}) do
+                    ns.db.filterAvailable=strict
+                    for _,confirmed in ipairs({true,false}) do
+                        for _,class in ipairs({1,2,3,4,5,7,8,9,11}) do
+                            local player={active={},skills={},level=60,race=96,class=class,confirmed={[id]=confirmed}}
+                            assert(ns.test.Eligible(id,player)==(class==wanted),'Class fallback failed '..id..'/'..class)
+                        end
+                    end
+                end
+                assert(quests[id].requiredClasses==0,'Shared mask was mutated')
+                quests[id].requiredClasses=4 -- Future native correction takes precedence.
+                assert(ns.test.Eligible(id,{active={},skills={},level=60,race=96,class=3}))
+                assert(not ns.test.Eligible(id,{active={},skills={},level=60,race=96,class=wanted}))
+            end
+            quests[8249]={requiredClasses=0,zoneOrSort=-162} -- Ravenholdt turn-in is open to all classes.
+            assert(ns.test.Eligible(8249,{active={},skills={},level=60,race=96,class=3}))
+        """)
+
+    def test_compendium_race_fallback_preserves_forsaken_and_alliance_exclusions(self):
+        self.check("""
+            quests[1049]={requiredRaces=162,requiredLevel=28,questLevel=38}
+            for _,strict in ipairs({true,false}) do
+                ns.db.filterAvailable=strict
+                for _,race in ipairs({1,2,3,4,5,6,7,8,95,96}) do
+                    for _,class in ipairs({1,2,3,4,5,7,8,9,11}) do
+                        local player={active={},skills={},level=38,race=race,class=class,confirmed={[1049]=true}}
+                        local allowed=race==2 or race==6 or race==8 or race==96
+                        assert(ns.test.Eligible(1049,player)==allowed,'Compendium mask failed '..race..'/'..class)
+                    end
+                end
+            end
+            assert(quests[1049].requiredRaces==162,'Shared race mask was mutated')
+            quests[1049].requiredRaces=16 -- A later provider value must supersede the fallback.
+            local player={active={},skills={},level=38,race=5,class=3}
+            assert(ns.test.Eligible(1049,player)); player.race=96
+            assert(not ns.test.Eligible(1049,player),'Stale fallback overrode new provider mask')
+        """)
+
+    def test_screenshot_pickups_respect_character_on_both_maps_and_ready_turnins(self):
+        self.check("""
+            npcs[259119]={name='Alaana Stormwalker',spawns={[12]={{22,30}}}}
+            npcs[3978]={name='Sage Truthseeker',spawns={[12]={{22,30}}}}
+            quests[96136]={name='Call of Air',requiredClasses=0,requiredRaces=8589934592,
+                requiredLevel=30,questLevel=35,startedBy={{259119}},finishedBy={{259119}}}
+            quests[1049]={name='Compendium of the Fallen',requiredRaces=162,requiredLevel=28,
+                questLevel=38,startedBy={{3978}},finishedBy={{3978}}}
+            UnitLevel=function() return 35 end
+            UnitRace=function() return 'Skyborne','Skyborne',96 end
+            UnitClass=function() return 'Hunter','HUNTER',3 end
+            UnitFactionGroup=function() return 'Horde' end
+            EnableMinimapMock(); ns.InitMinimap()
+            local function Check(id,wanted)
+                ns.RequestMap(nil,'FORCE_REFRESH'); Tick(120)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[id] then world=true end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[id] then mini=true end end
+                assert(world==wanted and mini==wanted,'Character filter differs between maps '..id)
+            end
+            Check(96136,false); Check(1049,true)
+            UnitClass=function() return 'Shaman','SHAMAN',7 end
+            Check(96136,true)
+            UnitRace=function() return 'Undead','Scourge',5 end
+            Check(1049,false); Check(96136,false)
+            active={1049}; done[1049]=true
+            Check(1049,true) -- An already accepted ready turn-in remains visible.
+        """)
+
+    def test_native_prerequisite_expressions_replace_historical_fallbacks(self):
+        self.check("""
+            local player={active={},skills={},level=40,race=5,class=3,confirmed={[92459]=true}}
+            quests[92459]={name='Friend of the Kirin Tor'}
+            completed[96984]=true
+            assert(not ns.test.Eligible(92459,player),'Missing native data lost legacy gate')
+            quests[92459].preQuestSingle={92458,96984}
+            assert(ns.test.Eligible(92459,player),'Legacy Alliance link overruled native Horde alternative')
+            completed[96984]=nil; completed[92458]=true
+            assert(ns.test.Eligible(92459,player),'Native Alliance alternative rejected')
+            completed[92458]=nil; player.active[96984]=true; done[96984]=true
+            assert(not ns.test.Eligible(92459,player),'Active alternative counted as turned in')
+            quests[545]={preQuestGroup={544,93680}}
+            completed[544]=true
+            assert(not ns.test.Eligible(545,player),'Native AND list lost key requirement')
+            completed[93680]=true
+            assert(ns.test.Eligible(545,player),'Complete native AND list rejected')
+            quests[92434]={preQuestSingle={545}}; completed[545]=true; completed[93680]=nil
+            assert(ns.test.Eligible(92434,player),'Stale redundant key gate overrode native predecessor')
+            assert(quests[92459].preQuestSingle[2]==96984 and quests[545].preQuestGroup[2]==93680)
+        """)
+
+    def test_sod_pvp_and_rekindle_quests_remain_season_restricted(self):
+        self.check("""
+            local player={active={},skills={},level=60,race=5,class=3,confirmed={}}
+            for _,id in ipairs({79090,79098,80001}) do
+                quests[id]={questLevel=25}
+                player.confirmed[id]=true
+                assert(not ns.test.Eligible(id,player),'SoD event restored by stale offer')
+                ns.db.filterAvailable=false
+                assert(ns.test.Eligible(id,player),'Broad view cannot browse labeled SoD quest')
+                ns.db.filterAvailable=true
+                player.confirmed[id]=nil
+            end
+        """)
+
+    def test_missing_minimum_level_falls_back_without_overruling_server_offers(self):
+        self.check("""
+            quests[1]={questLevel=30,requiredLevel=0}
+            quests[2]={questLevel=30,requiredLevel=20}
+            quests[3]={questLevel=-1,requiredLevel=0}
+            local player={active={},skills={},level=22,race=5,class=3}
+            assert(not ns.test.Eligible(1,player),'Unknown minimum allowed a future quest')
+            assert(ns.test.Eligible(2,player),'Known lower pickup level was overwritten')
+            assert(ns.test.Eligible(3,player),'Scaling level became a fixed minimum')
+            ns.db.showLowLevel=true
+            assert(not ns.test.Eligible(1,player),'Low-level toggle bypassed minimum')
+            player.confirmed={[1]=true}
+            assert(ns.test.Eligible(1,player),'Actual server offer lost precedence')
+            player.confirmed=nil; player.level=30
+            assert(ns.test.Eligible(1,player),'Fallback did not unlock at quest level')
+            player.level=22; ns.db.filterAvailable=false
+            assert(ns.test.Eligible(1,player),'Broad browsing unexpectedly restricted')
+        """)
+
+    def test_missing_sulhasa_location_uses_fallback_until_provider_has_spawns(self):
+        self.check("""
+            UnitFactionGroup=function() return 'Horde' end
+            UnitRace=function() return 'Undead','Scourge',5 end
+            npcs[14242]={name='Sulhasa',friendlyToFaction='H'}
+            quests[98093]={name='Field to Clear',requiredRaces=8589934770,
+                startedBy={{14242}},finishedBy={{14242}}}
+            LibQuestieDB.Support.Get=function()
+                return {private={areaIdToUiMapId={[17]=1413,[12]=1429}}}
+            end
+            assert(ns.InitDatabase())
+            WorldMapFrame.mapID=1413
+            EnableMinimapMock(); miniMapID=1413; miniPX=.48; miniPY=.775
+            ns.InitMinimap(); ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            assert(#WorldMapFrame.pins==1 and WorldMapFrame.pins[1].quests[98093])
+            assert(WorldMapFrame.pins[1].x==.48 and WorldMapFrame.pins[1].y==.775)
+            assert(next(ns.testMinimapActive),'Missing NPC fallback did not reach minimap')
+            assert(npcs[14242].spawns==nil,'Shared NPC data was mutated')
+            C_Map.GetMapInfo=function(id)
+                if id==1414 then return {mapType=2,name='Kalimdor'} end
+                return {mapType=3,parentMapID=1414,name='The Barrens'}
+            end
+            C_Map.GetMapRectOnMap=function() return .1,.9,.2,.8 end
+            WorldMapFrame.mapID=1414; ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            assert(#WorldMapFrame.pins==1 and math.abs(WorldMapFrame.pins[1].x-.484)<.00001,
+                'Observed fallback did not project to continent map')
+            WorldMapFrame.mapID=1413
+            active={98093}; done[98093]=true; Fire('QUEST_LOG_UPDATE'); Tick(100)
+            assert(WorldMapFrame.pins[1].quests[98093].kind=='turnin')
+            npcs[14242].spawns={[17]={{49,78}}}
+            ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            assert(#WorldMapFrame.pins==1 and WorldMapFrame.pins[1].x==.49,'Fallback duplicated newer native spawn')
+        """)
+
+    def test_library_ready_turnins_route_to_character_capital_without_new_pickups(self):
+        self.check("""
+            npcs[211022]={name='Owen Thadd',friendlyToFaction='H',spawns={[12]={{22,30}}}}
+            npcs[211033]={name='Garion Wendell',friendlyToFaction='A',spawns={[12]={{70,70}}}}
+            quests[78127]={name='The Dalaran Digest',finishedBy={{211033}},startedBy={{211033}}}
+            active={78127}; done[78127]=true
+            UnitRace=function() return 'Undead','Scourge',5 end
+            UnitFactionGroup=function() return 'Horde' end
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(100)
+            assert(#WorldMapFrame.pins==1 and WorldMapFrame.pins[1].quests[78127].label=='Owen Thadd')
+            assert(next(ns.testMinimapActive),'Horde library turn-in absent on minimap')
+            assert(quests[78127].finishedBy[1][1]==211033,'Provider giver list was mutated')
+            UnitRace=function() return 'Human','Human',1 end
+            UnitFactionGroup=function() return 'Alliance' end
+            ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            assert(#WorldMapFrame.pins==1 and WorldMapFrame.pins[1].quests[78127].label=='Garion Wendell')
+            active={}; ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100)
+            assert(#WorldMapFrame.pins==0,'Turn-in correction restored hidden collection pickups')
+        """)
+
+    def test_world_map_combat_defers_cold_warm_and_zone_refreshes_but_minimap_runs(self):
+        self.check("""
+            local acquire,remove,removeAll=WorldMapFrame.AcquirePin,WorldMapFrame.RemovePin,WorldMapFrame.RemoveAllPinsByTemplate
+            local acquired=0
+            WorldMapFrame.AcquirePin=function(self,...)
+                assert(not combat,'Protected map acquisition during combat')
+                acquired=acquired+1; return acquire(self,...)
+            end
+            WorldMapFrame.RemovePin=function(self,...)
+                assert(not combat,'Map release during combat'); return remove(self,...)
+            end
+            WorldMapFrame.RemoveAllPinsByTemplate=function(self,...)
+                assert(not combat,'Map clear during combat'); return removeAll(self,...)
+            end
+            npcs[10]={name='First zone giver',spawns={[12]={{22,30}}}}
+            npcs[11]={name='Other zone giver',spawns={[14]={{40,50}}}}
+            quests[1]={startedBy={{10}}}; quests[2]={startedBy={{11}}}
+            EnableMinimapMock(); ns.InitMinimap()
+            combat=true; Fire('PLAYER_REGEN_DISABLED'); ns.RequestMap(); Tick(150)
+            assert(acquired==0 and #WorldMapFrame.pins==0)
+            assert(next(ns.testMinimapActive),'Combat gate incorrectly stopped plain minimap frames')
+            combat=false; Fire('PLAYER_REGEN_ENABLED'); Tick(100)
+            assert(#WorldMapFrame.pins==1 and WorldMapFrame.pins[1].quests[1])
+            local before=acquired
+            combat=true; Fire('PLAYER_REGEN_DISABLED')
+            assert(not WorldMapFrame.pins[1]:IsShown())
+            WorldMapFrame:Hide(); WorldMapFrame.provider:OnHide()
+            WorldMapFrame:Show(); WorldMapFrame.provider:OnShow(); Tick(20)
+            assert(acquired==before,'Warm cache acquired pins during combat')
+            WorldMapFrame.mapID=1412; ns.RequestMap(); Fire('QUEST_LOG_UPDATE'); Tick(100)
+            assert(acquired==before)
+            combat=false; Fire('PLAYER_REGEN_ENABLED'); Tick(100)
+            assert(#WorldMapFrame.pins==1 and WorldMapFrame.pins[1].quests[2])
+        """)
+
+    def test_combat_cancels_running_map_scan_and_hidden_map_resumes_safely(self):
+        self.check("""
+            npcs[10]={name='Giver',spawns={[12]={{22,30}}}}
+            quests[1]={startedBy={{10}}}
+            local original=ns.BuildMap; local finishes=0
+            ns.BuildMap=function(...)
+                coroutine.yield(); finishes=finishes+1; return original(...)
+            end
+            ns.RequestMap(); Tick(1)
+            combat=true; Tick(10)
+            assert(finishes==0 and #WorldMapFrame.pins==0,'Worker completed map publication in combat')
+            WorldMapFrame:Hide(); WorldMapFrame.provider:OnHide()
+            combat=false; Fire('PLAYER_REGEN_ENABLED'); Tick(10)
+            assert(#WorldMapFrame.pins==0)
+            WorldMapFrame:Show(); WorldMapFrame.provider:OnShow(); Tick(100)
+            assert(finishes==1 and #WorldMapFrame.pins==1,'Map failed to rebuild after combat')
+        """)
+
+    def test_taint_report_only_reads_ownership_and_handles_unavailable_api(self):
+        self.check("""
+            SlashCmdList.QUESTLITE('taint')
+            assert(messages[#messages]:find('unavailable',1,true))
+            local handler=function() end; ActionButton_UpdateCooldown=handler
+            MultiBarBottomRightButton2={OnEvent=handler}
+            local calls=0
+            issecurevariable=function(object,key)
+                calls=calls+1
+                if object=='ActionButton_UpdateCooldown' then return false,'ExampleAddon' end
+                return true
+            end
+            local before=#writes
+            SlashCmdList.QUESTLITE('taint')
+            assert(calls>5 and #writes==before)
+            assert(ActionButton_UpdateCooldown==handler and MultiBarBottomRightButton2.OnEvent==handler)
+            local found=false
+            for _,message in ipairs(messages) do if message:find('tainted by ExampleAddon',1,true) then found=true end end
+            assert(found,'Tainted owner missing from diagnostic output')
+        """)
+
+    def test_goblin_lockpicks_is_rogue_only_on_both_maps_and_confirmed_offers(self):
+        self.check("""
+            UnitLevel=function() return 23 end
+            UnitClass=function() return 'Hunter','HUNTER',3 end
+            npcs[4086]={name='Veenix',spawns={[12]={{22,30}}}}
+            quests[78270]={name='Goblin Lockpicks',questLevel=23,requiredClasses=0,
+                startedBy={{4086}},finishedBy={{4086}}}
+            quests[1]={name='Ordinary pickup',startedBy={{4086}}}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(100)
+            local function Check(wanted)
+                local world=WorldMapFrame.pins[1]
+                local mini=select(2,next(ns.testMinimapActive))
+                assert(world and mini and world.quests[1] and mini.data.quests[1])
+                assert((world.quests[78270]~=nil)==wanted and (mini.data.quests[78270]~=nil)==wanted)
+            end
+            Check(false)
+            settings.filterAvailable:Change(false); Tick(100); Check(false)
+            settings.filterAvailable:Change(true); Tick(100)
+            UnitClass=function() return 'Rogue','ROGUE',4 end
+            ns.RequestMap(nil,'FORCE_REFRESH'); Tick(100); Check(true)
+            WorldMapFrame.pins[1]:OnMouseEnter()
+            assert(table.concat(QuestLiteTooltip.lines,' '):find('Rogue',1,true))
+            for _,class in ipairs({1,2,3,5,7,8,9,11}) do
+                local player={active={},skills={},level=23,race=5,class=class,confirmed={[78270]=true}}
+                assert(not ns.test.Eligible(78270,player),'Wrong-class confirmed offer restored Rogue quest')
+            end
+            for _,race in ipairs({1,5,95,96}) do
+                local player={active={},skills={},level=23,race=race,class=4}
+                assert(ns.test.Eligible(78270,player),'Invented faction/chain restriction blocked Rogue')
+            end
+            assert(quests[78270].requiredClasses==0,'Shared provider mask was mutated')
+        """)
+
+    def test_dalaran_entry_waits_for_both_key_and_patrol_turnins_on_both_maps(self):
+        self.check("""
+            UnitLevel=function() return 34 end
+            UnitRace=function() return 'Skyborne','Skyborne',96 end
+            UnitClass=function() return 'Hunter','HUNTER',3 end
+            UnitFactionGroup=function() return 'Horde' end
+            npcs[2410]={name='Magus Wordeen Voidglare',spawns={[12]={{22,30}}}}
+            for _,id in ipairs({544,93680,545,92434}) do
+                quests[id]={name='Attunement step '..id,questLevel=34,requiredLevel=30,
+                    requiredRaces=8589934770,startedBy={{2410}},finishedBy={{2410}}}
+            end
+            quests[545].preQuestSingle={544}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(100)
+            local function Check(id,wanted)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do if pin.quests[id] then world=true end end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[id] then mini=true end end
+                assert(world==wanted and mini==wanted,'Dalaran visibility wrong '..id)
+            end
+            Check(545,false); Check(92434,false)
+            active={544,93680}; done[544]=true; done[93680]=true
+            Fire('QUEST_LOG_UPDATE'); Tick(100)
+            Check(544,true); Check(93680,true); Check(545,false); Check(92434,false)
+            completed[544]=true; active={93680}; Fire('QUEST_TURNED_IN',544); Tick(100)
+            Check(545,false); Check(92434,false)
+            completed[93680]=true; active={}; Fire('QUEST_TURNED_IN',93680); Tick(100)
+            Check(545,true); Check(92434,false)
+            active={545}; done[545]=true; Fire('QUEST_LOG_UPDATE'); Tick(100)
+            Check(545,true); Check(92434,false)
+            completed[545]=true; active={}; Fire('QUEST_TURNED_IN',545); Tick(100)
+            Check(92434,true) -- No Bel'varil quest has been completed.
+            local player={active={},skills={},level=34,race=96,class=3,confirmed={[545]=true,[92434]=true}}
+            completed[93680]=nil
+            assert(not ns.test.Eligible(545,player) and not ns.test.Eligible(92434,player),
+                'Confirmed offers bypassed missing key turn-in')
+            completed[93680]=true; completed[545]=nil
+            player.active[545]=true
+            assert(not ns.test.Eligible(92434,player),'Objectives bypassed Patrols turn-in')
+            player.active={}; completed[545]=true
+            C_Item={GetItemCount=function() return 0 end}
+            assert(ns.test.Eligible(92434,player),'Provided Grimy Key became an inventory gate')
+            ns.db.filterAvailable=false; completed={}
+            assert(ns.test.Eligible(92434,player),'Broad browsing no longer permits locked quests')
+            ns.db.filterAvailable=true; player.race=95
+            assert(not ns.test.Eligible(92434,player),'Horde entry leaked to Alliance Skyborne')
         """)
 
     def test_toc_and_xml(self):
@@ -434,8 +1561,8 @@ class AddonTests(unittest.TestCase):
 
     def test_settings_and_cvar_restoration(self):
         self.check("""
-            assert(ns.db.sparkleOther and ns.db.sparkleQuest)
-            assert(cvars.SoftTargetInteract=='3')
+            assert(ns.db.sparkleOther==nil and ns.db.sparkleQuest==nil)
+            assert(cvars.SoftTargetInteract=='0')
             assert(cvars.outlineModeShowLootEffectWhenDisabled=='1')
             SlashCmdList.QUESTLITE('off')
             assert(cvars.SoftTargetInteract=='0')
@@ -738,7 +1865,8 @@ class AddonTests(unittest.TestCase):
             assert(not ns.test.Eligible(900001,p))
             C_Reputation={GetFactionDataByID=function() return {currentStanding=3000} end}
             assert(ns.test.Eligible(900001,p))
-            p.race=34; quests[900001]={requiredRaces=2^33}
+            p.race=96; LibQuestieDB.Enum.raceMaskById={[96]=2^33,[5]=16}
+            quests[900001]={requiredRaces=2^33}
             assert(ns.test.Eligible(900001,p))
             p.race=5; assert(not ns.test.Eligible(900001,p))
         """)
@@ -819,32 +1947,18 @@ class AddonTests(unittest.TestCase):
             assert(cvars.outlineModeShowLootEffectWhenDisabled=='1')
         """)
 
-    def test_interactable_sparkle_and_combat_suspension(self):
+    def test_retired_custom_sparkles_never_enable_soft_targeting_or_poll_units(self):
         self.check("""
-            local plate=CreateFrame()
-            C_NamePlate={GetNamePlateForUnit=function() return plate end}
-            UnitExists=function() return false end
-            UnitIsGameObject=function() return true end
-            UnitName=function() return 'Treasure Chest' end
-            UnitIsInInteractRange=function() return true end
-            SetUnitCursorTexture=function(texture)
-                texture:SetTexture('Interface\\\\Cursor\\\\Interact'); return true
-            end
-            Fire('PLAYER_SOFT_INTERACT_CHANGED'); Tick(5)
-            assert(cvars.SoftTargetNameplateInteract=='1')
-            local animated
-            for _,frame in ipairs(frames) do
-                if frame.scripts.OnUpdate and frame.shown and frame.width==1 and frame.height==1 then
-                    animated=frame
-                end
-            end
-            assert(animated)
-            Fire('PLAYER_REGEN_DISABLED'); combat=true
-            assert(not animated:IsShown())
-            local count=#writes; Tick(10); assert(#writes==count)
-            combat=false; Fire('PLAYER_REGEN_ENABLED'); Tick(5)
-            assert(cvars.SoftTargetNameplateInteract=='1')
-            assert(animated:IsShown())
+            assert(ns.defaults.sparkleOre==nil and ns.defaults.sparkleOther==nil)
+            assert(settings.sparkleOre==nil and settings.sparkleOther==nil)
+            local reads=0
+            C_NamePlate={GetNamePlateForUnit=function() reads=reads+1 end}
+            UnitIsGameObject=function() reads=reads+1; return true end
+            local writesBefore=#writes
+            Fire('PLAYER_SOFT_INTERACT_CHANGED'); Fire('NAME_PLATE_UNIT_ADDED','nameplate1'); Tick(200)
+            assert(reads==0 and #writes==writesBefore,'Retired engine still polled or wrote settings')
+            assert(cvars.SoftTargetInteract=='0' and cvars.SoftTargetNameplateInteract=='0')
+            assert(cvars.outlineModeShowLootEffectWhenDisabled=='1')
         """)
 
     def test_dungeon_sentinels_become_outdoor_entrances(self):
@@ -877,7 +1991,7 @@ class AddonTests(unittest.TestCase):
             end
             pin:OnAcquired(data); pin:OnMouseEnter()
             assert(QuestLiteTooltip.anchor=='ANCHOR_CURSOR')
-            assert(#QuestLiteTooltip.lines==21)
+            assert(#QuestLiteTooltip.lines==22)
             assert(QuestLiteTooltip.lines[1]:find('Giver'))
             assert(QuestLiteTooltip.lines[2]:find('[1] Quest 1',1,true))
             assert(QuestLiteTooltip.lines[21]:find('[20] Quest 20',1,true))
@@ -994,7 +2108,7 @@ class AddonTests(unittest.TestCase):
             local pin=WorldMapFrame.pins[1]
             assert(pin.width==22 and pin.Count.text=='2')
             pin:OnMouseEnter()
-            assert(#QuestLiteTooltip.lines==3)
+            assert(#QuestLiteTooltip.lines==4)
             Fire('SKILL_LINES_CHANGED'); Tick(100)
             assert(WorldMapFrame.pins[1]==pin,'Refresh replaced the hovered frame')
             assert(QuestLiteTooltip.lines[2]:find('First Quest',1,true))
@@ -1268,7 +2382,7 @@ class AddonTests(unittest.TestCase):
             local pin=select(2,next(ns.testMinimapActive))
             assert(pin and pin.OnMouseEnter==nil,'Minimap frame must not inherit the map pin mixin')
             pin:GetScript('OnEnter')(pin)
-            assert(QuestLiteTooltip.owner==pin and #QuestLiteTooltip.lines==2)
+            assert(QuestLiteTooltip.owner==pin and #QuestLiteTooltip.lines==3)
             IsShiftKeyDown=function() return true end
             Fire('MODIFIER_STATE_CHANGED','LSHIFT',1)
             assert(QuestLiteTooltip.owner==pin and QuestLiteTooltip.lines[3]=='Quest details')
@@ -1277,7 +2391,7 @@ class AddonTests(unittest.TestCase):
             assert(QuestLiteTooltip.lines[3]=='Quest details')
             IsShiftKeyDown=function() return false end
             Fire('MODIFIER_STATE_CHANGED','LSHIFT',0)
-            assert(#QuestLiteTooltip.lines==2 and QuestLiteTooltip.owner==pin)
+            assert(#QuestLiteTooltip.lines==3 and QuestLiteTooltip.owner==pin)
             pin:GetScript('OnLeave')(pin)
             Fire('MODIFIER_STATE_CHANGED','LCTRL',1)
             assert(not QuestLiteTooltip:IsShown())
@@ -1347,7 +2461,8 @@ class AddonTests(unittest.TestCase):
     def test_cvar_restoration_ignores_unknown_keys_and_malformed_values(self):
         self.check("""
             cvars.unrelatedSetting='1'
-            ns.db.savedCVars.unrelatedSetting='9'
+            ns.db.savedCVars={unrelatedSetting='9'}
+            cvars.SoftTargetInteract='3'
             ns.db.savedCVars.SoftTargetInteract={invalid=true}
             SlashCmdList.QUESTLITE('off')
             assert(cvars.unrelatedSetting=='1','Restoration changed an unmanaged setting')
@@ -1460,7 +2575,7 @@ class AddonTests(unittest.TestCase):
             assert(not ns.test.Eligible(98251,player) and not ns.test.Eligible(98252,player),
                 'Broad view bypassed the faction race mask')
             ns.db.filterAvailable=true
-            for _,race in ipairs({2,5,6,8,34}) do
+            for _,race in ipairs({2,5,6,8,96}) do
                 player.race=race
                 assert(ns.test.Eligible(98252,player),'Eligible Horde race was rejected: '..race)
             end

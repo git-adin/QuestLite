@@ -1,4 +1,4 @@
-# QuestLite 0.3.9
+# QuestLite 0.4.20
 
 A focused quest map and loot visibility addon for World of Warcraft: Forever
 (Interface 16001). Requires **QuestieDB**. Questie and QuestieTrace are optional.
@@ -29,6 +29,9 @@ forbidden function names, combat state, a bounded stack, and any synchronous
 QuestLite CVar call. Records persist across reloads. `/ql errors clear` clears
 only this diagnostic history; it does not hide or reset Blizzard's warnings.
 The recorder is event-driven and adds no polling or full error-handler hooks.
+`/ql taint` prints a read-only ownership snapshot of action-bar functions and
+references, without reading cooldown values or changing Blizzard handlers.
+`/ql status` includes the loaded addon version. See [TaintAudit.md](TaintAudit.md).
 These records identify the blocked action and context, not necessarily the
 original source of taint. This diagnostic update does not claim to fix an
 unidentified protected-action failure.
@@ -41,7 +44,14 @@ unidentified protected-action failure.
 4. Open a **continent or zone map**, then hover a marker to see nearby quests
    grouped by quest giver. Continent tooltips also show the source zone. Hold Shift for
    objective text and coordinates; the tooltip opens at the cursor.
-5. Use `/ql` or Esc > Options > AddOns > QuestLite for options.
+5. Use `/ql` or either QuestLite map button to open the Map / Filters / Prerequisites window.
+
+The guide and expanded marker details show quest level separately from minimum
+pickup level. A red quest level describes difficulty, not necessarily its pickup
+requirement. Unknown minimums are labelled unknown. Betrayed (3504) has a listed
+minimum of 44 and quest level 53, but its Forever availability is unverified;
+strict mode requires a current NPC offer for that pickup. Broad browsing still
+shows the candidate, and ready turn-ins remain visible.
 
 A gold **!** button around the minimap also opens options. Drag it around the
 edge to reposition it; its position is saved per character. **Show QuestLite
@@ -51,25 +61,26 @@ joining the shared map-button stack when Questie/RareScanner provides it.
 It remains accessible when quest markers or the minimap button are disabled.
 
 Map and sparkle features start enabled; Show low level quests starts off.
-Preferences and original soft-target CVar values are
-saved per character.
+Preferences are saved per character.
 
 ### Availability filter
 
 The normal pickup cutoff defaults to 5 levels below your character. At level 22
 this includes quest levels 17 and above, subject to pickup requirements. There is
 no extra upper-level cutoff. Adjust **Normal level limit (levels below mine)**
-in `/ql`. Turn **Show low level quests** on to show all available low-level
+in `/ql`. Turn **Show all low-level quests** on to show all available low-level
 quests, bypassing that cutoff; it defaults to off.
 This applies to continent, zone and minimap pickups. Ready turn-ins remain visible
 at any level. Quests with unknown or scaling levels remain visible. Leveling up
 automatically refreshes the threshold. `/ql status` reports the minimum level.
 
-In `/ql`, **Hide unavailable quest pickups** is on by default. It applies known
+In `/ql`, **Only available quests** is on by default. It applies known
 level, chain, class/race, profession rank/specialization, reputation, spell and required-item
 restrictions, removes obsolete breadcrumbs and auto-reward entries, and skips
 wrong-faction NPC givers. Quest item drops from hostile creatures remain valid
 sources.
+Race checks use QuestieDB's race-ID mapping, including Skyborne IDs 95/96, rather
+than assuming a race ID is its position in the database mask.
 
 It also applies a compact Forever-compatible display policy for hidden,
 unobtainable and conditional quests, including the library catalog, Scourge
@@ -94,10 +105,19 @@ Known chain prerequisites are checked even for confirmed NPC offers. Accepting a
 prerequisite or finishing its objectives does not count as turning it in. Parent
 quests and explicit active-or-complete unlock conditions keep their documented
 semantics. Both maps refresh when the chain advances.
+Breadcrumb filtering follows explicit database relationships. Elayaa's Skyborne
+Hunter quest remains available after taming training: live-server testing confirmed
+that the introductory text does not imply a breadcrumb availability restriction.
 Local corrections fill verified missing database links for Mankrik, the Titan
 Relic follow-ups, and the Dalaran chains. They do not alter QuestieDB's shared
 data. [ItemGateAudit.md](ItemGateAudit.md) records the item-related review and
 distinguishes native provider requirements from our corrections.
+
+Verified class/race data gaps are corrected locally while their old provider
+values remain unchanged: Alaana's Call of Air is Shaman-only, four Mage/Druid
+training records retain their class limits, and Compendium of the Fallen includes
+Horde Skyborne while excluding Forsaken and Alliance. New native masks take
+precedence. See [ClassSeasonAudit.md](ClassSeasonAudit.md).
 
 Turn the checkbox off to also see locked or higher-level database candidates.
 Completed, active, wrong-race and wrong-class quests remain hidden. Turn-in
@@ -108,6 +128,109 @@ guarantee server-only conditions before you visit the giver. Conditional holiday
 and event pickups require an NPC offer in strict mode; use the broader view to
 browse them before visiting. Calendar activation is not implemented.
 
+## QuestLite window
+
+Open `/ql` or click either QuestLite map button. The window has three tabs:
+
+- **Map:** world-map/minimap icons, pickups, turn-ins, loot sparkles and tooltips.
+- **Filters:** availability, PvP, cloth donations, item-drop sources and the lower-level cutoff.
+- **Prerequisites:** search part of a quest name, paste a quest link, or open a quest directly from a marker.
+
+Left-click a marker to open its prerequisite guide. Grouped markers let you choose
+one quest. The guide shows the missing steps, their pickup or return NPCs, and
+known zone coordinates. Click a step to inspect that quest's own prerequisites.
+When alternatives are shown, choose one branch; they are not cumulative tasks.
+Accepted quests point to their turn-in location. Visible guidance refreshes after
+quest-log changes or turn-ins. Hidden quests remain searchable.
+
+Right-click still selects a pickup to hide; Shift-left-click keeps the quick-hide
+shortcut. Use **Hidden quests** in the window to restore pickups. The draggable
+window reuses its controls and offers paged search results/routes. No command or
+quest ID is required for the normal search workflow. Existing settings are kept.
+
+## Find missing quest prerequisites
+
+Use `/ql prereq <quest ID or exact quest name>` to see known missing quest turn-ins
+and where to pick up or return them. For example:
+
+```
+/ql prereq Smuggler's Paradise
+/ql prereq 95288
+```
+
+Shift-hover details show the same information for locked pickups when browsing
+with availability filtering off. Guidance follows your class/race branch, lists
+earlier missing steps first, and uses known giver coordinates. An accepted quest
+points to its turn-in NPC instead. Completed introductions stop appearing.
+
+Smuggler's Paradise now requires The Goblin Trader (Horde) **or** A Few Furs for
+Friz (Alliance) turned in. Their verified preceding steps and Smuggler's Special's
+link are also supplied when missing from the provider. Native requirements take
+precedence as usual. These are turn-in links, not inferred breadcrumb gates.
+
+Guidance is limited to four links and ten quest rows, with cycle protection and
+an omission notice. It describes known turn-in prerequisites rather than every
+possible server condition, skill requirement or event state. Unknown locations
+stay unknown. Name lookup uses current localized names and reports at most three
+exact matches; an ID avoids ambiguity. No full quest graph or name index is kept.
+
+## Hide cloth donation pickups
+
+Enable **Hide cloth donation pickups** in `/ql`, or use `/ql cloth` to toggle it.
+It covers the capital reputation donations of wool, silk, mageweave and runecloth,
+including repeatable Additional Runecloth and both Skyborne factions. It affects
+pickup markers on both maps, with ready turn-ins preserved. Other crafting or
+story quests involving cloth are unaffected. The per-character setting starts off
+to preserve your display; it applies in broad browsing and to confirmed offers.
+
+## Hide PvP quest pickups
+
+Enable **Hide PvP quest pickups** in `/ql`, or use `/ql pvp` to toggle it.
+The per-character setting hides PvP pickup markers on the world map and minimap,
+including broad browsing and confirmed offers. It starts off to preserve your
+existing display. Ready turn-ins remain visible, matching Questie's available
+PvP quest option. Individual hidden quests and other pickup filters still apply.
+
+Classification uses verified local PvP IDs and Questie's applicable tag corrections, then the game's
+PvP tag (41), without a Questie runtime dependency. Non-PvP corrections also take
+precedence to avoid false exclusions. Unknown or secret tags stay unclassified;
+new quest-data results refresh the filter when enabled. Darkspear Islands mark
+turn-ins and battleground-victory quests have explicit corrections for missing
+tags, covering both factions and all eighteen known variants. Quest names, enemy-faction
+NPCs and PvP-zone locations alone are not treated as proof of a PvP quest.
+
+## Hide individual quest pickups
+
+Right-click a QuestLite marker on either map and choose the quest to hide. A
+grouped marker lists each pickup separately; it never hides the entire group.
+Shift-left-click hides a single pickup immediately, or opens the list for a group.
+This hides that quest's pickup markers at every location, saved per character.
+Ready turn-ins remain visible. Hiding works even with availability filtering off.
+
+Use `/ql hidden` to open the restore list and click a quest to restore it.
+`/ql unhide <quest ID>` restores one by ID; `/ql unhide all` restores every manually
+hidden pickup. The drop-source toggle below is independent: a restored quest's
+item-drop locations still follow that option.
+
+## Quest-starting item drop locations
+
+In `/ql`, turn **Show item-started quests** off to hide markers for quests
+started by dropped items. `/ql drops` toggles the same per-character option.
+It starts enabled to preserve existing settings. The option affects both the
+world map and minimap, including container-based starters. It hides all item-start
+markers, including the destination references described below. Direct NPC and
+object pickups, ready turn-ins, quest-item drop-rate tooltips and loot sparkles
+are unaffected. Mixed-source quests keep their ordinary giver markers.
+
+The three **Find OOX** beacon quests and **Crystal in the Mountains** (Pendant
+of Myzrael) show their known turn-in NPC/object instead of scattered drop-source
+areas on both maps. These are reference destinations, labelled **Item quest
+destination**: obtain the dropped starter first. They do not mean that the NPC
+offers a pickup or that the quest is complete. The normal eligibility, low-level,
+item-start and per-quest hiding settings still apply. Accepted quests use normal
+ready turn-in markers. Other item starters retain their source locations; missing
+finisher data falls back to those sources.
+
 ## Included
 
 - Quest pickup markers, including low level quests; known level, race, class,
@@ -116,7 +239,7 @@ browse them before visiting. Calendar activation is not implemented.
 - Objective markers are left to Blizzard's built-in map display.
 - Completed quest turn-in locations.
 - Nearby minimap pickup and turn-in icons, with quest-giver hover lists and Shift
-  details. **Show minimap quest icons** in `/ql` switches these on/off independently
+  details. **Minimap icons** in `/ql` switches these on/off independently
   of the world map. The availability and pickup/turn-in settings apply to both.
 - Dungeon entrance markers on outdoor maps, labeled as entrances, for locations
   inside known instances. Valid local coordinates can also appear on their
@@ -137,8 +260,8 @@ browse them before visiting. Calendar activation is not implemented.
   current progress, target name, and a source coordinate. This is objective
   information, not the full narrative/reward text of the quest dialog.
 - The client's quest loot sparkle setting is maintained across graphics changes.
-- Extra glints for nearby quest objects, herbs, ore, lootable corpses, and other
-  objects identified by the interaction cursor, such as chests or doors.
+- One-time restoration of interaction settings changed by older custom-sparkle
+  versions. QuestLite no longer enables soft targeting or custom glints.
 
 There is no replacement tracker, journey history, communications, routing system,
 or bundled copy of the quest database. Objective markers remain Blizzard's.
@@ -176,6 +299,10 @@ trigger a database scan. `/ql refresh` forces a new scan. Native quest events ar
 a running scan finishes before a follow-up scan. Database traversal cooperatively
 yields on an approximately 4 ms time budget, with a 2,048-checkpoint safety cap. An individual native decode can
 exceed that budget. Work cancels when the map closes or changes zones.
+
+World-map pin updates are deferred during combat because native MapCanvas pin
+acquisition configures protected mouse-button passthrough. Existing QuestLite
+world pins hide during combat and rebuild afterward. Minimap markers continue.
 
 Locations within about one percent of the displayed map share a marker so their hover targets do not pile up. Hover shows
 all nearby quests grouped by giver and sorted by level/title, with Shift for
@@ -219,9 +346,18 @@ use conservative round clipping. Only current-zone coordinates are loaded, so a
 quest across a zone border may appear after you cross it. If the client withholds
 player coordinates, icons hide until coordinates are available again.
 
-The sparkle effect reuses one frame and seven textures. Target checks run about
-eight times per second while enabled and out of combat. Animation runs only
-while an effect is visible. There is no unrestricted world object scan.
+QuestLite keeps only the client's built-in quest loot sparkle. The custom
+soft-target/nameplate sparkle engine was removed in 0.4.0 following the same
+change in Forever Loot Sparkles 2.0.0: it could affect untargeted friendly spells,
+leave empty corpse nameplates and show unwanted interaction icons. There is no
+custom sparkle animation or interaction-target polling.
+
+On login, old saved interaction settings are restored outside combat, with a
+second pass after five seconds for late account synchronization. Restoration
+only touches the known settings previously managed by QuestLite, skips malformed
+values, and preserves current values that differ from those it used to set.
+Failed restores retain the saved originals for another login. See
+[SparkleMigration.md](SparkleMigration.md) for the migration and its limits.
 
 ## Client and data limits
 
@@ -236,22 +372,16 @@ while an effect is visible. There is no unrestricted world object scan.
   overrides directly. No extra Era conversion is applied. Unknown coordinates
   and unsupported instance locations are skipped. Continent/world projection is
   not implemented.
-- Custom glints follow **one** soft interaction target, usually within about
-  15 yards on Forever. They cannot highlight every nearby object simultaneously,
-  extend the game's effective range, or determine unopened corpse loot contents.
-- Soft targeting and object interaction icons are enabled on first use. Objects
-  may show the game's own interaction icon or nameplate. If you turn those client
-  options off yourself, extra glints can stop until you enable a sparkle option
-  again. The addon respects those later choices.
-- Custom glints pause during combat. CVar writes are deferred until combat ends.
-  The built-in quest loot effect may still be visible.
-- Other objects means objects the client exposes as interactable; it does not
-  guarantee all objects in the world will sparkle.
+- Built-in sparkles are selected by the game. QuestLite does not add custom
+  highlights to herbs, ore, corpses, chests or other interaction targets.
+- Quest-loot sparkle CVar changes and legacy interaction-setting restoration wait
+  until combat ends.
 
 ## Commands and turning off
 
 - `/ql`: options.
 - `/ql status`: last scan status and client-reported memory for guide/database.
+- `/ql taint`: read-only action-bar taint ownership snapshot for troubleshooting.
 - `/ql refresh`: refresh the visible map.
 - `/ql off`: disable all features and restore saved soft-target CVars. When used
   in combat, restoration waits until combat ends.
@@ -269,8 +399,8 @@ and Interact Key Icons settings in the client, and use
 ## Validation and first in-game check
 
 Offline Lua 5.1 tests cover filtering, source lookup, map changes, scan completion
-during event bursts, frame limits with all quests represented, sparkle target
-classification/animation, graphics resets, saved settings and combat restoration.
+during event bursts, frame limits with all quests represented, graphics resets, saved settings,
+legacy CVar migration and combat restoration.
 An integration harness loads the installed QuestieDB's baked data, support tables
 and corrections read-only and exercises nine maps plus active quests, checking that no objective markers are added.
 
@@ -281,8 +411,8 @@ Before treating this as a stable release:
 2. Check pickup and turn-in markers in a familiar zone. Hover and hold Shift over
    grouped markers; pan, zoom, close, reopen, and switch maps.
 3. Accept, progress, abandon and turn in a quest. Check that markers update.
-4. Approach a herb, vein, quest object, chest and lootable corpse. Enter/leave
-   combat and confirm glints resume without errors.
+4. Verify that untargeted friendly spells, corpse nameplates and interaction
+   icons behave as configured after the migration. QuestLite adds no custom glints.
 5. Change a graphics preset; verify quest sparkles return. Use `/ql off` during
    combat and verify restoration after the fight. Restart to check persistence.
 6. Use `/ql status` after several zone changes to measure guide and database
@@ -290,12 +420,16 @@ Before treating this as a stable release:
 
 ## Credits and license
 
-GPL-3.0-or-later; see `LICENSE`. `SoftTarget.lua`, `LootSparkles.lua`, and
-`Textures/flare.tga` are adapted/copied from **Forever Loot Sparkles v1.3.1** by
+Data from ForeverDB.net (https://foreverdb.net). Selected observed fixed quest
+levels and a missing NPC location were compared against ForeverDB 0.57.16; see
+[ForeverDBAudit.md](ForeverDBAudit.md) and [FOREVERDB_LICENSE.txt](FOREVERDB_LICENSE.txt).
+These compact corrections are included locally; ForeverDB is not a dependency.
+
+GPL-3.0-or-later; see `LICENSE`. `LootSparkles.lua` and the legacy-setting
+cleanup are adapted from **Forever Loot Sparkles v1.3.1 / v2.0.0** by
 Ashtar Senior (svengabr): <https://github.com/svengabr/ForeverLootSparkles>.
-Changes include shared guide options, other interactables, explicit combat
-suspension and slash-command shutdown. Existing attribution in the source is
-preserved.
+Changes include shared guide options, validated migration of legacy settings,
+combat deferral and slash-command shutdown. Existing attribution is preserved.
 
 Questie and QuestieDB were consulted as references. QuestieDB remains a separately
 installed dependency; its data and code are not redistributed in this package.
