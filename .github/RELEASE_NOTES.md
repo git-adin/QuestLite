@@ -1,3 +1,7 @@
+# QuestLite 0.4.21
+
+The install ZIP includes the game files, player documentation, and required notices. The development audits are available in the source repository.
+
 Download **QuestLite.zip** below and extract it into your WoW Forever
 `_forever_/Interface/AddOns/` folder. The result should be
 `AddOns/QuestLite/QuestLite.toc`.
