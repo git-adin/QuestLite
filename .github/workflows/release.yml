@@ -1,15 +1,16 @@
-name: Package and publish addon
+name: Validate and release QuestLite
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
+  pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,17 +19,46 @@ jobs:
           python-version: '3.12'
       - name: Install test dependencies
         run: python -m pip install --target .tools -r tests/requirements.txt
-      - name: Run offline Lua regression tests
+      - name: Run Lua behavior checks
         run: python tests/test_addon.py
-      - name: Build installable ZIPs and verify version
+      - name: Run package checks
+        run: python tests/test_package.py
+      - name: Build packages
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: python tools/package.py --tag "$RELEASE_TAG"
-      - name: Create draft, upload packages, and publish
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          if [ -n "$RELEASE_TAG" ]; then
+            python tools/package.py --tag "$RELEASE_TAG"
+          else
+            python tools/package.py
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QuestLite-packages
+          if-no-files-found: error
+          path: |
+            dist/QuestLite*.zip
+            dist/SHA256SUMS.txt
+  release:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: QuestLite-packages
+          path: dist
+      - name: Verify release checksums
+        working-directory: dist
+        run: sha256sum --check SHA256SUMS.txt
+      - name: Upload and publish release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           gh release create "$RELEASE_TAG" --verify-tag --draft \
             --title "QuestLite $RELEASE_TAG" --notes-file .github/RELEASE_NOTES.md

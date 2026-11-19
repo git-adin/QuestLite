@@ -31,7 +31,7 @@ only this diagnostic history; it does not hide or reset Blizzard's warnings.
 The recorder is event-driven and adds no polling or full error-handler hooks.
 `/ql taint` prints a read-only ownership snapshot of action-bar functions and
 references, without reading cooldown values or changing Blizzard handlers.
-`/ql status` includes the loaded addon version. See [TaintAudit.md](TaintAudit.md).
+`/ql status` includes the loaded addon version. See the [taint audit](https://github.com/git-adin/QuestLite/blob/main/QuestLite/TaintAudit.md).
 These records identify the blocked action and context, not necessarily the
 original source of taint. This diagnostic update does not claim to fix an
 unidentified protected-action failure.
@@ -85,12 +85,12 @@ than assuming a race ID is its position in the database mask.
 It also applies a compact Forever-compatible display policy for hidden,
 unobtainable and conditional quests, including the library catalog, Scourge
 Invasion, and AQ War Effort supply/commendation quests. Explicit NPC offers can restore these entries. See
-[AvailabilityAudit.md](AvailabilityAudit.md) for the audit, provenance and limits.
-The event-specific sweep is recorded in [EventCoverage.md](EventCoverage.md).
+[the availability audit](https://github.com/git-adin/QuestLite/blob/main/QuestLite/AvailabilityAudit.md) for the audit, provenance and limits.
+The event-specific sweep is recorded in the [event coverage notes](https://github.com/git-adin/QuestLite/blob/main/QuestLite/EventCoverage.md).
 Known Season of Discovery leftovers are excluded in the normal Forever view and
 carry season/class labels for eligible characters browsing unfiltered candidates.
 Race/class masks still apply to confirmed NPC offers and broad mode. See
-[ClassSeasonAudit.md](ClassSeasonAudit.md) for the screenshot-specific corrections.
+[the class and season audit](https://github.com/git-adin/QuestLite/blob/main/QuestLite/ClassSeasonAudit.md) for the screenshot-specific corrections.
 Known event categories are checked at runtime as well as by imported quest IDs.
 
 After you talk to an NPC using a gossip or quest-greeting list, the filter also hides quests
@@ -110,14 +110,14 @@ Hunter quest remains available after taming training: live-server testing confir
 that the introductory text does not imply a breadcrumb availability restriction.
 Local corrections fill verified missing database links for Mankrik, the Titan
 Relic follow-ups, and the Dalaran chains. They do not alter QuestieDB's shared
-data. [ItemGateAudit.md](ItemGateAudit.md) records the item-related review and
+data. The [item gate audit](https://github.com/git-adin/QuestLite/blob/main/QuestLite/ItemGateAudit.md) records the item-related review and
 distinguishes native provider requirements from our corrections.
 
 Verified class/race data gaps are corrected locally while their old provider
 values remain unchanged: Alaana's Call of Air is Shaman-only, four Mage/Druid
 training records retain their class limits, and Compendium of the Fallen includes
 Horde Skyborne while excluding Forsaken and Alliance. New native masks take
-precedence. See [ClassSeasonAudit.md](ClassSeasonAudit.md).
+precedence. See the [class and season audit](https://github.com/git-adin/QuestLite/blob/main/QuestLite/ClassSeasonAudit.md).
 
 Turn the checkbox off to also see locked or higher-level database candidates.
 Completed, active, wrong-race and wrong-class quests remain hidden. Turn-in
@@ -357,7 +357,7 @@ second pass after five seconds for late account synchronization. Restoration
 only touches the known settings previously managed by QuestLite, skips malformed
 values, and preserves current values that differ from those it used to set.
 Failed restores retain the saved originals for another login. See
-[SparkleMigration.md](SparkleMigration.md) for the migration and its limits.
+[the sparkle migration notes](https://github.com/git-adin/QuestLite/blob/main/QuestLite/SparkleMigration.md) for the migration and its limits.
 
 ## Client and data limits
 
@@ -422,7 +422,7 @@ Before treating this as a stable release:
 
 Data from ForeverDB.net (https://foreverdb.net). Selected observed fixed quest
 levels and a missing NPC location were compared against ForeverDB 0.57.16; see
-[ForeverDBAudit.md](ForeverDBAudit.md) and [FOREVERDB_LICENSE.txt](FOREVERDB_LICENSE.txt).
+[the ForeverDB audit](https://github.com/git-adin/QuestLite/blob/main/QuestLite/ForeverDBAudit.md) and [FOREVERDB_LICENSE.txt](FOREVERDB_LICENSE.txt).
 These compact corrections are included locally; ForeverDB is not a dependency.
 
 GPL-3.0-or-later; see `LICENSE`. `LootSparkles.lua` and the legacy-setting

@@ -1,0 +1,6 @@
+## Interface: @@INTERFACE@@
+## Title: @@ADDON_TITLE@@
+## Version: @@VERSION@@
+## X-License: GPL-3.0-or-later
+
+Core.lua

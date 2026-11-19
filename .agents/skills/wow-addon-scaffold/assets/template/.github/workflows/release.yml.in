@@ -1,0 +1,66 @@
+name: Validate and release @@ADDON_NAME@@
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install --target .tools -r tests/requirements.txt
+      - name: Run offline Lua checks
+        run: python tests/test_addon.py
+      - name: Verify ZIP contents and checksums
+        run: python tests/test_package.py
+      - name: Build validated release artifacts
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          if [ -n "$RELEASE_TAG" ]; then
+            python tools/package.py --tag "$RELEASE_TAG"
+          else
+            python tools/package.py
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: addon-packages
+          if-no-files-found: error
+          path: |
+            dist/@@ADDON_NAME@@*.zip
+            dist/SHA256SUMS.txt
+  release:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: addon-packages
+          path: dist
+      - name: Check upload files
+        working-directory: dist
+        run: sha256sum -c SHA256SUMS.txt
+      - name: Draft, upload, and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --draft \
+            --title "@@ADDON_NAME@@ $RELEASE_TAG" --notes-file .github/RELEASE_NOTES.md
+          gh release upload "$RELEASE_TAG" \
+            "dist/@@ADDON_NAME@@-${RELEASE_TAG#v}.zip" dist/@@ADDON_NAME@@.zip dist/SHA256SUMS.txt
+          gh release edit "$RELEASE_TAG" --draft=false --latest
