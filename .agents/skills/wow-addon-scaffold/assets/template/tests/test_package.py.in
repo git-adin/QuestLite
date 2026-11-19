@@ -1,0 +1,68 @@
+"""Verify the complete install ZIP and the version and checksum contract."""
+
+import hashlib
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+from tempfile import TemporaryDirectory
+import unittest
+from zipfile import ZipFile
+
+
+ROOT = Path(__file__).resolve().parents[1]
+ADDON = "@@ADDON_NAME@@"
+EXPECTED = {
+    f"{ADDON}/{ADDON}.toc": ROOT / ADDON / f"{ADDON}.toc",
+    f"{ADDON}/Core.lua": ROOT / ADDON / "Core.lua",
+    f"{ADDON}/README.md": ROOT / ADDON / "README.md",
+    f"{ADDON}/LICENSE": ROOT / "LICENSE",
+}
+
+
+class PackageTests(unittest.TestCase):
+    def test_release_assets(self):
+        toc = (ROOT / ADDON / f"{ADDON}.toc").read_text(encoding="utf-8-sig")
+        version = re.search(r"^## Version:\s*(\S+)", toc, re.M)[1]
+
+        with TemporaryDirectory() as temp:
+            output = Path(temp) / "out"
+            command = [sys.executable, str(ROOT / "tools/package.py"), "--output-dir", str(output)]
+            wrong_tag = subprocess.run(command + ["--tag", "wrong"], capture_output=True, text=True)
+            self.assertNotEqual(wrong_tag.returncode, 0)
+            self.assertIn("must match TOC version", wrong_tag.stderr)
+            self.assertFalse(output.exists())
+
+            subprocess.run(command + ["--tag", f"v{version}"], check=True, capture_output=True)
+            versioned, stable = output / f"{ADDON}-{version}.zip", output / f"{ADDON}.zip"
+            self.assertEqual(versioned.read_bytes(), stable.read_bytes())
+            with ZipFile(stable) as archive:
+                self.assertIsNone(archive.testzip())
+                self.assertEqual(set(archive.namelist()), EXPECTED.keys())
+                for entry, source in EXPECTED.items():
+                    self.assertEqual(archive.read(entry), source.read_bytes())
+            self.assertEqual(
+                (output / "SHA256SUMS.txt").read_text().splitlines(),
+                [f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}" for path in (versioned, stable)],
+            )
+
+    def test_missing_toc_entry_fails(self):
+        with TemporaryDirectory() as temp:
+            fixture = Path(temp) / "checkout"
+            shutil.copytree(ROOT / ADDON, fixture / ADDON)
+            shutil.copytree(ROOT / "tools", fixture / "tools")
+            shutil.copy(ROOT / "LICENSE", fixture)
+            toc = fixture / ADDON / f"{ADDON}.toc"
+            with toc.open("a", encoding="utf-8") as file:
+                file.write("\nMissing.lua\n")
+
+            command = [sys.executable, str(fixture / "tools/package.py")]
+            failed = subprocess.run(command, capture_output=True, text=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn("Missing.lua", failed.stderr)
+            self.assertFalse((fixture / "dist").exists())
+
+
+if __name__ == "__main__":
+    unittest.main()

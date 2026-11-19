@@ -1,0 +1,3 @@
+# @@ADDON_TITLE@@
+
+Extract `@@ADDON_NAME@@.zip` into `@@CLIENT_FOLDER@@/Interface/AddOns/`. The resulting path should be `AddOns/@@ADDON_NAME@@/@@ADDON_NAME@@.toc`. Start @@CLIENT@@, enable the add-on, and use `/@@SLASH_COMMAND@@` to confirm that it loaded.

@@ -40,6 +40,7 @@ Development checks (Python 3, `lupa`, and `cbor2` for the database integration):
 ```powershell
 python -m pip install --target .tools -r tests/requirements.txt
 python tests/test_addon.py
+python tests/test_package.py
 python tests/check_installed_database.py 'F:/World of Warcraft/_forever_/Interface/AddOns/QuestieDB'
 python tools/package.py
 ```
@@ -56,8 +57,9 @@ git tag v0.3.3
 git push origin v0.3.3
 ```
 
-Use the new version's tag for subsequent releases. The release workflow runs the
-offline tests, verifies that the tag matches the TOC, and publishes an installable
+Use the new version's tag for subsequent releases. Pull requests and pushes to
+`main` run the offline behavior and package checks. A version tag adds a TOC
+version check and publishes an installable
 ZIP, a versioned copy and SHA-256 checksums. It publishes only after all assets
 have uploaded. The download link above always points to the latest release.
 The installed-database integration check remains a local check requiring QuestieDB.

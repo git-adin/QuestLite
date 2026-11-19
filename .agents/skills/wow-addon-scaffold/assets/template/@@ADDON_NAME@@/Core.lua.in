@@ -1,0 +1,14 @@
+-- SPDX-License-Identifier: GPL-3.0-or-later
+local addonName = ...
+
+local events = CreateFrame("Frame")
+events:RegisterEvent("ADDON_LOADED")
+events:SetScript("OnEvent", function(self, _, loadedAddon)
+    if loadedAddon ~= addonName then return end
+    self:UnregisterEvent("ADDON_LOADED")
+
+    SLASH_@@SLASH_KEY@@1 = "/@@SLASH_COMMAND@@"
+    SlashCmdList.@@SLASH_KEY@@ = function()
+        print(addonName .. " is loaded.")
+    end
+end)

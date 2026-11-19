@@ -1,0 +1,49 @@
+"""Load the add-on the way WoW does and check its slash command."""
+
+from pathlib import Path
+import sys
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+ADDON = ROOT / "@@ADDON_NAME@@"
+sys.path.insert(0, str(ROOT / ".tools"))
+
+from lupa.lua51 import LuaRuntime
+
+
+class AddonTests(unittest.TestCase):
+    def test_installed_toc_loads_and_registers_command(self):
+        lua = LuaRuntime()
+        lua.execute(
+            '''
+            local events = {}
+            frame = {}
+            function frame:RegisterEvent(name) events[name] = true end
+            function frame:UnregisterEvent(name) events[name] = nil end
+            function frame:SetScript(_, callback) self.callback = callback end
+            function CreateFrame() return frame end
+            function Fire(event, ...)
+                if events[event] then frame:callback(event, ...) end
+            end
+            SlashCmdList = {}
+            function print(message) lastMessage = message end
+            '''
+        )
+        namespace = lua.table()
+        toc = (ADDON / "@@ADDON_NAME@@.toc").read_text(encoding="utf-8")
+        for line in toc.splitlines():
+            entry = line.strip().replace(chr(92), "/")
+            if entry and not entry.startswith("#") and entry.endswith(".lua"):
+                source = (ADDON / entry).read_text(encoding="utf-8")
+                lua.execute(source, "@@ADDON_NAME@@", namespace)
+
+        lua.execute('Fire("ADDON_LOADED", "AnotherAddon")')
+        self.assertIsNone(lua.globals().SLASH_@@SLASH_KEY@@1)
+        lua.execute('Fire("ADDON_LOADED", "@@ADDON_NAME@@")')
+        self.assertEqual(lua.globals().SLASH_@@SLASH_KEY@@1, "/@@SLASH_COMMAND@@")
+        lua.globals().SlashCmdList.@@SLASH_KEY@@()
+        self.assertEqual(lua.globals().lastMessage, "@@ADDON_NAME@@ is loaded.")
+
+
+if __name__ == "__main__":
+    unittest.main()

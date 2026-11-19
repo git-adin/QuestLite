@@ -1,0 +1,16 @@
+# @@ADDON_NAME@@
+
+The client target is @@CLIENT@@. Keep the installable runtime under `@@ADDON_NAME@@/` with `@@ADDON_NAME@@.toc` at its root. TOC order determines when Lua and XML files load.
+
+Use the add-on namespace passed through `...` for code shared between files. Keep implementation details local, add modules by responsibility, and initialize SavedVariables in the add-on's own `ADDON_LOADED` handler if persistence is needed. Keep optional dependencies behind their documented APIs and handle an unavailable provider.
+
+Run these checks from the repo root:
+
+```text
+python -m pip install --target .tools -r tests/requirements.txt
+python tests/test_addon.py
+python tests/test_package.py
+python tools/package.py
+```
+
+Release ZIPs have one top-level add-on folder. Include TOC and XML runtime files, explicit assets, player-facing docs, and required notices. Put development notes, helpers, and tests outside the install folder. Keep versioned and stable ZIPs identical and check their digests. The release tag must match the TOC version. Check game API, tooltip, combat, or load-order changes in the target client when available.

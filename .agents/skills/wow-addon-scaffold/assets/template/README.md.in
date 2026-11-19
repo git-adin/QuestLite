@@ -1,0 +1,20 @@
+# @@ADDON_TITLE@@
+
+An add-on for @@CLIENT@@.
+
+## Install
+
+Download `@@ADDON_NAME@@.zip` from Releases and follow the [install instructions](@@ADDON_NAME@@/README.md).
+
+## Develop
+
+From the repository root, run the offline behavior and package checks with Python 3.12:
+
+```text
+python -m pip install --target .tools -r tests/requirements.txt
+python tests/test_addon.py
+python tests/test_package.py
+python tools/package.py
+```
+
+The build outputs the stable ZIP, a versioned ZIP, and checksums under `dist/`. For a release, update the TOC version and `.github/RELEASE_NOTES.md`, then tag the release commit with the matching version prefixed by `v`.

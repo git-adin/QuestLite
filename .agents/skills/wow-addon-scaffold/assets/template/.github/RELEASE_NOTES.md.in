@@ -1,0 +1,3 @@
+# @@ADDON_TITLE@@
+
+Initial release for @@CLIENT@@. Extract the ZIP into `@@CLIENT_FOLDER@@/Interface/AddOns/` and use `/@@SLASH_COMMAND@@` to confirm the add-on loaded.
