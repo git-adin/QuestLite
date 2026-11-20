@@ -1,5 +1,53 @@
 # Updated reference addon verification - 0.2.13
 
+## Current review: 2026-11-19 / QuestLite 0.4.22
+
+### Follow-up at 14:12 client load failure
+
+ForeverDB is now 0.67.1, snapshot 2026-11-19.24a7fd5e, with Helper 1.7.4.
+Questie 12.11.1, QuestieDB Forever 1.1.3 / contract 4, QuestieTrace 1.13.0 and
+Loot Sparkles 2.0.0 are unchanged. The full comparison still has the same review
+candidate counts; observed/client rows increased to 2834 and quest locations to
+2796. No new correction or dependency migration is justified for QuestLite.
+
+FrameXML.log records at 14:12:56 that QuestieDB failed to load as missing and
+QuestLite was then blocked by its required dependency. The installed QuestieDB
+folder contains the correct Interface 16001 Forever TOC; all 51 referenced files
+exist and the provider loads under the offline harness. The TOC was created at
+12:00:58, after the client log's 09:02 startup. A stale client addon discovery list
+is a plausible explanation, not a confirmed diagnosis. Full client restart and
+live dependency recognition remain pending; no replacement TOC, third-party Lua
+patch, dependency removal or warning suppression was applied.
+
+| Installed reference | Version | Result |
+| --- | --- | --- |
+| Questie | 12.11.1 | Regenerated policy: eight additional hidden IDs (1374, 1380, 1381, 78150, 78917, 79536, 82208, 93862). Three were already covered by collection policy. Total 628 hidden IDs, 1164 tag corrections, including 238 PvP tags. |
+| QuestieDB | 1.1.3 | Contract 4 unchanged. All 5982 native quests read successfully. Native field/location updates retain precedence over guarded fallbacks. |
+| QuestieTrace | 1.13.0 | Recording, privacy and UI code is independent of QuestLite. No recorder API or saved-variable dependency to migrate. |
+| ForeverDB | 0.67.0 | Snapshot 2026-11-19.da52610c, build 1.60.1.70959. Full comparison completed; existing data schema supported. No new dependency or speculative gates. |
+| ForeverDB_Helper | 1.7.3 | Unchanged; no dependency. |
+| Forever Loot Sparkles | 2.0.0 | Unchanged. Native sparkles and retired soft-target cleanup retained. |
+
+The [published Questie changelog](https://www.curseforge.com/wow/addons/questie/files/9701389)
+and installed QuestieDB changelog identify the upstream changes. All 22 Darkspear
+quest variants now appear in the provider. Their upstream PvP tags cover 98892,
+98894, 98900 and 98902, absent from the older eighteen-ID manual supplement.
+
+Targeted installed-data regressions verify all four Buying Friendship quests at
+reputation -1 versus Neutral 0, the Raene's Cleansing chain, Tauren-only Earthmother
+masks, and newly Horde-wide masks on Paladin quests 91862/96204. Older mask and
+inventory assertions were updated; wrong-class/race rejection still covers every
+record. Modera's coordinate correction comes from the provider, requiring no local
+override. XP and translation changes require no migration. Questie's recolor fix
+belongs to its renderer: QuestLite's icon reuse, hover, edge-exit and motion tests
+pass. Questie tracker modifier shortcuts are not an integration surface here.
+
+Validation: 117 Lua regressions, two packaging tests, both installed-provider
+profiles and full ForeverDB comparison. Only generated reference data changes;
+protected UI, tooltip hooks and map rendering are unchanged. Client smoke status:
+not performed for 0.4.22; after reload, check PvP-filtered Darkspear pickups and
+ordinary pickup/ready turn-in markers. No live-client success is claimed.
+
 Verified against the installed packages on 2026-11-08:
 
 | Package | Installed version | QuestLite impact |

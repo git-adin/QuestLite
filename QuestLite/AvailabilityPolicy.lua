@@ -28,7 +28,7 @@ ns.chainAlternativeOverrides = {
     [95288] = {93976, 94928}, -- Smuggler's Paradise: Goblin Trader OR A Few Furs for Friz.
 }
 ns.chainPrerequisiteOverrides = {
-    [95183] = {95420}, -- Step One: Rock requires the Land of Giants ogre introduction turned in.
+    [95183] = {95424}, -- Step One: Rock follows Might Makes Right; that quest follows Land of Giants.
     [93976] = {93788}, -- The Goblin Trader follows Borrowed Blades (Horde).
     [94928] = {94925}, -- A Few Furs for Friz follows A Fur Trade (Alliance).
     [95293] = {95288}, -- Smuggler's Special follows Smuggler's Paradise.

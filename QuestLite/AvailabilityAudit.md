@@ -213,6 +213,24 @@ The comparison audit now records fallback mode (all/any) explicitly.
 
 ## Step One: Rock / ogre introduction (0.4.17)
 
+**Corrected in 0.4.21:** the introduction-only gate below was incomplete.
+The user's Forever client screenshot shows Land of Giants turned in, Might Makes
+Right (95424) and Unworthy Champion (95425) accepted, but Step One: Rock still
+unavailable. A firsthand comment by BabyJ on the linked quest page explicitly
+identifies completing Might Makes Right as the unlock. The missing-native fallback
+is now 95183 <- 95424, with native 95424 <- 95420 retained. Guidance therefore
+follows Land of Giants -> Might Makes Right -> Step One: Rock. Accepting the
+combat quest or finishing its objectives is insufficient: wait for turn-in.
+Unworthy Champion, reputation and higher level are not added as speculative gates.
+Native prerequisite data still takes precedence when supplied.
+
+Client smoke record, 2026-11-18: user screenshot on the Forever client confirms
+the old false pickup after the introduction turn-in (level 45 Horde Skyborne
+Hunter; Gorgegut marker 69.7,25.9). New-policy client retest is pending: reload
+0.4.21 with Might Makes Right active, verify no pickup on either map, then turn
+it in to Clugfist and check the actual offer at Hamur/Gorgegut. Offline regressions
+cover both maps and those state transitions; they do not prove the live unlock.
+
 Both screenshot markers are quest 95183 (Step One: Rock), recorded at Hamur
 263440 and Gorgegut 259988. The provider has no predecessor or reputation gate
 for it. A firsthand report on

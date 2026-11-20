@@ -1,10 +1,23 @@
-# QuestLite 0.4.21
+# QuestLite 0.4.22
 
 The install ZIP includes the game files, player documentation, and required notices. The development audits are available in the source repository.
 
 Download **QuestLite.zip** below and extract it into your WoW Forever
 `_forever_/Interface/AddOns/` folder. The result should be
 `AddOns/QuestLite/QuestLite.toc`.
+
+Updated in 0.4.22: refreshed availability data against Questie 12.11.1 and
+QuestieDB 1.1.3: eight additional hidden/conditional IDs and 22 PvP tag corrections,
+including the newly supplied Darkspear variants. Native reputation, race,
+prerequisite and location fixes are consumed automatically. Verified the Neutral
+Buying Friendship threshold, Raene's Cleansing chain and Tauren-only Earthmother
+quests. Reviewed ForeverDB 0.67.0; no speculative prerequisites or level gates added.
+
+Also in 0.4.22: Step One: Rock now waits for Might Makes Right to be turned
+in, rather than appearing immediately after Land of Giants. The prerequisite
+guide follows both steps and shows Clugfist's pickup/return location. Native
+provider prerequisites retain precedence; ready turn-ins and broad browsing
+keep their existing behavior.
 
 New in 0.4.20: the three Find OOX beacon quests and Pendant of Myzrael show
 their turn-in destination on both maps instead of scattered drop-source areas.

@@ -369,12 +369,13 @@ class AddonTests(unittest.TestCase):
             end
         """)
 
-    def test_step_one_rock_waits_for_ogre_introduction_on_both_maps(self):
+    def test_step_one_rock_waits_for_might_makes_right_turnin_on_both_maps(self):
         self.check("""
             npcs[259988]={name='Gorgegut',spawns={[12]={{22,30}}}}
             npcs[263440]={name='Hamur',spawns={[12]={{24,30}}}}
             npcs[255829]={name='Clugfist',spawns={[12]={{26,30}}}}
             quests[95420]={name='Land of Giants',startedBy={{255829}},finishedBy={{255829}}}
+            quests[95424]={name='Might Makes Right',startedBy={{255829}},finishedBy={{255829}},preQuestSingle={95420}}
             quests[95183]={name='Step One: Rock',startedBy={{259988,263440}},finishedBy={{263440}}}
             quests[96026]={name='Step Two: More Rock',startedBy={{263440}},preQuestSingle={95183}}
             EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(120)
@@ -390,9 +391,14 @@ class AddonTests(unittest.TestCase):
             assert(hints:find('Land of Giants',1,true) and hints:find('Clugfist',1,true))
             local player={active={},skills={},level=60,race=96,class=3,confirmed={[95183]=true}}
             assert(not ns.test.Eligible(95183,player),'Confirmed offer bypassed mandatory introduction')
-            active={}; completed[95420]=true; Fire('QUEST_TURNED_IN',95420); Tick(120); Check(true)
+            active={95424}; completed[95420]=true; Fire('QUEST_TURNED_IN',95420); Tick(120); Check(false)
+            hints=table.concat(ns.GetPrerequisiteHints(95183),' ')
+            assert(hints:find('Might Makes Right',1,true) and hints:find('Clugfist',1,true))
+            done[95424]=true; Fire('QUEST_LOG_UPDATE'); Tick(120); Check(false)
+            assert(not ns.test.Eligible(95183,player),'Confirmed offer bypassed unturned Might Makes Right')
+            active={}; completed[95424]=true; Fire('QUEST_TURNED_IN',95424); Tick(120); Check(true)
             assert(not ns.test.Eligible(96026,player),'Second rock quest unlocked before first turn-in')
-            completed[95420]=nil; active={95183}; done[95183]=true; Fire('QUEST_LOG_UPDATE'); Tick(120)
+            completed[95420]=nil; completed[95424]=nil; active={95183}; done[95183]=true; Fire('QUEST_LOG_UPDATE'); Tick(120)
             Check(true) -- Ready turn-in remains visible even with an absent legacy prerequisite flag.
             active={}; done={}; ns.db.filterAvailable=false; ns.RequestMap(); Tick(120); Check(true)
             quests[95183].preQuestSingle={123}; completed[123]=true; ns.db.filterAvailable=true
@@ -1801,6 +1807,28 @@ class AddonTests(unittest.TestCase):
             C_GossipInfo={GetAvailableQuests=function() return {{questID=8811}} end}
             Fire('GOSSIP_SHOW'); Tick(100)
             assert(WorldMapFrame.pins[1].quests[8811].confirmed, 'Real AQ offer was not restored')
+        """)
+
+    def test_questie_12_11_conditional_pickups_and_new_pvp_tags(self):
+        self.check("""
+            local player={level=60,race=96,class=3,active={},skills={}}
+            for _,id in ipairs({1374,1380,1381,78150,78917,79536,82208,93862}) do
+                quests[id]={name='Conditional '..id,questLevel=60,requiredLevel=1}
+                assert(ns.pickupPolicy.hidden[id] and not ns.test.Eligible(id,player))
+                ns.db.filterAvailable=false; assert(ns.test.Eligible(id,player))
+                ns.db.filterAvailable=true
+            end
+            for _,id in ipairs({98892,98894,98900,98902}) do
+                quests[id]={name='Darkspear variant',questLevel=49,requiredLevel=1}
+                assert(ns.IsPvPQuest(id),'New upstream PvP classification missing')
+                ns.db.hidePvPQuests=true
+                for _,strict in ipairs({true,false}) do
+                    ns.db.filterAvailable=strict
+                    assert(not ns.test.Eligible(id,player))
+                end
+                ns.db.hidePvPQuests=false
+                assert(ns.test.Eligible(id,player))
+            end
         """)
 
     def test_all_reviewed_event_categories_reject_unlisted_new_quests(self):
