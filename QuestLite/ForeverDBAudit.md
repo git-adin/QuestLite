@@ -1,5 +1,22 @@
 # ForeverDB comparison and corrections — QuestLite 0.4.2
 
+## Refresh 2026-11-19 / 0.4.22
+
+Compared installed ForeverDB 0.67.0, snapshot 2026-11-19.da52610c / build
+1.60.1.70959, against QuestieDB 1.1.3. Counts: 5982 provider quests, 3544 Classic
+rows, 2824 observed/client rows, 4514 guides, 1110 NPC spots, 2786 quest-location
+records and 22 POI entries. Existing eleven-field records still parse.
+
+Report: eight missing IDs, 52 sequence candidates, 68 giver differences, 22 level
+differences, ten NPC-location candidates and 164 Classic prerequisite-expression
+differences. Thirteen fixed-level differences are already resolved by guarded
+corrections. No additional fixed-level correction is justified. Unknown/scaling
+levels and five minimum-level differences remain unmodified. Completion sightings
+do not establish pickup thresholds; previous-quest observations do not establish
+mandatory gates. All eight missing quests are unplaced PvP Season Journey parts
+3-10 with zero witnesses, so no speculative markers are added. Existing native
+locations and alternatives are preserved. The report is in ignored dist/.
+
 Data from ForeverDB.net (https://foreverdb.net). Copyright (C) 2026 ForeverDB.net;
 selected data reused under its GPL-3.0 section 7(b) attribution terms. See
 [FOREVERDB_LICENSE.txt](FOREVERDB_LICENSE.txt).

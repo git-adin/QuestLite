@@ -417,7 +417,7 @@ lua.execute(b'''
         assert(LibQuestieDB.Quest.name(id),'Missing Paladin chain record '..id)
         assert(LibQuestieDB.Quest.Get(id,'requiredClasses')==2,'Paladin mask changed '..id)
         local raceMask=LibQuestieDB.Quest.Get(id,'requiredRaces')
-        local widened=id==91859 or id==91860 or id==95111 or id==95125 or id==95126
+        local widened=id==91859 or id==91860 or id==91862 or id==96204 or id==95111 or id==95125 or id==95126
         assert(raceMask==16 or (widened and raceMask==8589934770),'Unexpected Paladin race mask '..id)
         if index>1 then
             local previous=chain[index-1]
@@ -457,6 +457,44 @@ lua.execute(b'''
     end
 ''')
 print('Native Dalaran OR alternatives retain precedence over older local fallback gates.')
+lua.execute(b'''
+    local oldRep,oldA,oldB=C_Reputation,completed[93224],completed[93225]
+    completed[93224]=true; completed[93225]=nil
+    local standing=-1
+    C_Reputation={GetFactionDataByID=function() return {currentStanding=standing} end}
+    for _,id in ipairs({93226,93227,94872,94873}) do
+        local requirement=LibQuestieDB.Quest.Get(id,'requiredMinRep')
+        assert(requirement and requirement[2]==0,'Native Neutral reputation gate missing')
+        local player={level=60,race=id<94000 and 95 or 96,class=3,active={},skills={},skillsKnown=true}
+        standing=-1
+        assert(not guide.test.Eligible(id,player),'Hostile Buying Friendship pickup leaked')
+        standing=0
+        assert(guide.test.Eligible(id,player),'Neutral Buying Friendship pickup blocked')
+        CheckNativeRequirements(id)
+    end
+    C_Reputation,completed[93224],completed[93225]=oldRep,oldA,oldB
+    local chain={991,1023,1024,1026,1027,1028,1055,1029,1030,1045,1046}
+    for index=2,#chain do
+        local id,previous=chain[index],chain[index-1]
+        local requirements=LibQuestieDB.Quest.Get(id,'preQuestSingle')
+        assert(requirements and #requirements==1 and requirements[1]==previous,'Raene native chain changed')
+        local old=completed[previous]; completed[previous]=nil
+        local player={level=60,race=95,class=3,active={[previous]=true},skills={},confirmed={[id]=true}}
+        assert(not guide.test.Eligible(id,player),'Active Raene prerequisite bypassed turn-in')
+        player.active={}; completed[previous]=true
+        assert(guide.test.Eligible(id,player),'Native Raene turn-in did not unlock next step')
+        completed[previous]=old; CheckNativeRequirements(id)
+    end
+    for _,id in ipairs({76156,76160,76240}) do
+        assert(LibQuestieDB.Quest.Get(id,'requiredRaces')==32,'Earthmother native Tauren mask changed')
+        local player={level=60,race=96,class=3,active={},skills={},confirmed={[id]=true}}
+        assert(not guide.test.Eligible(id,player),'Earthmother wrong-race offer leaked')
+    end
+    local modera=LibQuestieDB.Npc.spawns(269127)
+    assert(modera and modera[130] and math.abs(modera[130][1][1]-68.6)<.001
+        and math.abs(modera[130][1][2]-45.1)<.001,'Native Modera location correction missing')
+''')
+print('QuestieDB 1.1.3: Neutral reputation boundary, native Raene chain turn-ins, and Tauren-only Earthmother masks verified.')
 lua.execute(b'''
     local classIDs={1,2,3,4,5,7,8,9,11}
     local raceIDs={1,2,3,4,5,6,7,8,95,96}
@@ -581,7 +619,7 @@ lua.execute(b'''
     additionalPvPCount=0
     for _,id in ipairs(LibQuestieDB.Quest.GetAllIds()) do
         if titles[LibQuestieDB.Quest.name(id)] then
-            assert(guide.additionalPvPQuests[id] and guide.IsPvPQuest(id),'Darkspear variant missed '..id)
+            assert(guide.IsPvPQuest(id),'Darkspear variant missed '..id)
             additionalPvPCount=additionalPvPCount+1
             guide.db.hidePvPQuests=true
             for _,strict in ipairs({true,false}) do
@@ -592,7 +630,7 @@ lua.execute(b'''
         LibQuestieDB.Quest.InvalidateCache(id)
     end
     for id in pairs(guide.additionalPvPQuests) do assert(titles[LibQuestieDB.Quest.name(id)]) end
-    assert(additionalPvPCount==18)
+    assert(additionalPvPCount==22)
     local oldLevel,oldRace,oldClass,oldFaction=UnitLevel,UnitRace,UnitClass,UnitFactionGroup
     UnitLevel=function() return 49 end
     UnitRace=function() return 'Skyborne','Skyborne',96 end
@@ -660,8 +698,9 @@ print('Smuggler integration: either faction introduction must be turned in; actu
 lua.execute(b'''
     assert(LibQuestieDB.Quest.name(95183)=='Step One: Rock')
     assert(LibQuestieDB.Quest.name(95420)=='Land of Giants')
+    assert(LibQuestieDB.Quest.name(95424)=='Might Makes Right')
     local oldLevel,oldRace,oldClass,oldFaction=UnitLevel,UnitRace,UnitClass,UnitFactionGroup
-    local oldCompleted,oldActive,oldDone=completed[95420],active,done
+    local oldCompleted,oldMight,oldActive,oldDone=completed[95420],completed[95424],active,done
     UnitLevel=function() return 45 end
     UnitRace=function() return 'Skyborne','Skyborne',96 end
     UnitClass=function() return 'Hunter','HUNTER',3 end
@@ -676,7 +715,7 @@ lua.execute(b'''
         assert((not not seen.Hamur)==wanted,'Actual Hamur introduction gate failed')
         assert((not not seen.Gorgegut)==wanted,'Actual Gorgegut introduction gate failed')
     end
-    completed[95420]=nil; active={}; done={}; Check(false)
+    completed[95420]=nil; completed[95424]=nil; active={}; done={}; Check(false)
     local matches=guide.FindQuestMatches('step one',20)
     assert(#matches==1 and matches[1]==95183,'Actual prerequisite search missed screenshot quest')
     guide.OpenQuestGuide(95183)
@@ -686,12 +725,16 @@ lua.execute(b'''
     active={95420}; done[95420]=true; Check(false)
     local hints=table.concat(guide.GetPrerequisiteHints(95183),' ')
     assert(hints:find('Land of Giants',1,true) and hints:find('Clugfist',1,true),'Introduction turn-in guidance missing')
-    active={}; completed[95420]=true; Check(true)
-    CheckNativeRequirements(95183); CheckNativeRequirements(95420)
-    completed[95420],active,done=oldCompleted,oldActive,oldDone
+    active={95424}; completed[95420]=true; Check(false)
+    hints=table.concat(guide.GetPrerequisiteHints(95183),' ')
+    assert(hints:find('Might Makes Right',1,true) and hints:find('Clugfist',1,true))
+    done[95424]=true; Check(false)
+    active={}; completed[95424]=true; Check(true)
+    CheckNativeRequirements(95183); CheckNativeRequirements(95420); CheckNativeRequirements(95424)
+    completed[95420],completed[95424],active,done=oldCompleted,oldMight,oldActive,oldDone
     UnitLevel,UnitRace,UnitClass,UnitFactionGroup=oldLevel,oldRace,oldClass,oldFaction
 ''')
-print('Step One: Rock integration: both recorded giver markers wait for Land of Giants turn-in; actual native requirements are preserved.')
+print('Step One: Rock integration: both giver markers wait for Might Makes Right turn-in, with Land of Giants guidance and native requirements preserved.')
 lua.execute(b'''
     local quest=LibQuestieDB.Quest
     assert(quest.name(3504)=='Betrayed' and quest.Get(3504,'requiredLevel')==44

@@ -1,4 +1,4 @@
-# QuestLite 0.4.21
+# QuestLite 0.4.22
 
 A focused quest map and loot visibility addon for World of Warcraft: Forever
 (Interface 16001). Requires **QuestieDB**. Questie and QuestieTrace are optional.

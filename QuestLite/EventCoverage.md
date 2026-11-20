@@ -1,6 +1,6 @@
-# Event coverage audit - 0.4.20
+# Event coverage audit - 0.4.22
 
-Checked against the installed Questie v12.10.0 and QuestieDB Forever v1.1.2.
+Checked against the installed Questie v12.11.1 and QuestieDB Forever v1.1.3.
 Counts overlap across lists and database categories; they are not additive.
 
 ## Separate event lists
