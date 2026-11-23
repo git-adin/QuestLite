@@ -17,6 +17,16 @@
 
 **Done when** every checkout passes its local build and CI checks, and each verified ZIP extracts directly into `Interface/AddOns/<AddonName>/`. Record a live Forever smoke test for changes involving game APIs, tooltips, combat restrictions, or addon load order.
 
+**Live Forever smoke tests, November 23, 2026.** The player confirmed all five checks for the installed builds.
+
+| Add-on | Verified in game |
+| --- | --- |
+| QuestLite 0.4.23 | Known quest-item drop rates, clean tooltips when no rate is available, and the quest guide opening from a world-map marker. See the [compatibility audit](QuestLite/CompatibilityAudit.md). |
+| AuctionPriceLite 0.3.2 | Full Auction House scan, fresh scan status, item and stack estimates, and expanded tooltip details. |
+| WritCrateLite 0.2.2 | Writ and crate pricing through AuctionPriceLite after the same scan. |
+| ProfessionGuide 0.5.2 | Blacksmithing finishing routes and shopping-list updates when switching alternatives. |
+| HunterLens 0.1.10 | Known beast teaching rank, expanded Shift tooltip, and a clean `/hl debug` check. |
+
 ## 3. Fix ProfessionGuide's farming-goal export
 
 1. Add and document a small public ItemFarmingTool API for reading tracked goals and applying a batch of minimum goals. Validate the whole batch inside ItemFarmingTool before modifying state. Return success or a reason for failure. Preserve unrelated entries and existing higher goals.
