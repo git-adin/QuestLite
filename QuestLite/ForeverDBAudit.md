@@ -264,3 +264,14 @@ roaming/alternate locations and Ripped Missive's item-versus-NPC observation rem
 unmodified. The verified Step One: Rock introduction is a separate local policy
 correction backed by player evidence; this snapshot has no direct observed
 95183 predecessor record to import automatically.
+
+## ForeverDB 0.72.0 (2026-11-21)
+
+Data from [ForeverDB.net](https://foreverdb.net), build 1.60.1.70959, snapshot
+2026-11-21.a7dd88fb. Compared 6,080 QuestieDB 1.1.4 quests with 3,557 Classic
+rows, 3,105 observed quest rows and 4,619 guide rows. Eleven of the twenty
+level differences are already covered by guarded fixed-level corrections.
+The other nine are five scaling quests and four minimum pickup-level
+differences. The comparison also found 55 unmatched sequence candidates and
+eight NPC location candidates. Those records remain review candidates pending
+direct evidence of a minimum level, mandatory prerequisite or fixed location.

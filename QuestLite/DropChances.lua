@@ -128,12 +128,17 @@ local function ItemTooltip(tooltip, data)
         if ok and not ns.IsSecret(link) and type(link) == "string" then id = tonumber(link:match("item:(%d+)")) end
     end
     if type(id) ~= "number" or not ActiveItems()[id] then return end
-    if not Begin(tooltip, "item:" .. id) then return end
     local drops = api.Item.npcDrops(id) or {}
     local shown, known = 0, 0
     for _, npcID in ipairs(drops) do
         local value = Rate(id, npcID)
         if value ~= nil then
+            -- No heading or placeholder when this item has no useful rate.
+            -- Delay touching the tooltip until the first known source.
+            if shown == 0 and not Begin(tooltip, "item:" .. id) then
+                Release(api.Item, id)
+                return
+            end
             known = known + 1
             if shown < MAX_LINES then
                 tooltip:AddDoubleLine(api.Npc.name(npcID) or ("NPC #" .. npcID), FormatRate(value), 1, .85, .3, 1, 1, 1)
@@ -144,8 +149,7 @@ local function ItemTooltip(tooltip, data)
     end
     Release(api.Item, id)
     if known > shown then tooltip:AddLine("And " .. (known - shown) .. " other sources", .7, .7, .7) end
-    if shown == 0 then tooltip:AddLine("Unknown: no NPC drop-rate data", .7, .7, .7) end
-    Finish(tooltip)
+    if shown > 0 then Finish(tooltip) end
 end
 
 local function UnitTooltip(tooltip, data)

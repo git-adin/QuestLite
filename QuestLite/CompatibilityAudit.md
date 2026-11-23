@@ -348,3 +348,29 @@ item-start toggle, active/ready states, ordinary starters and absent finisher da
 Movement and forced-refresh checks keep the destination fixed, and hide its
 minimap marker when the player leaves range rather than selecting a nearby drop.
 Live client appearance has not been tested.
+
+## Reference refresh 2026-11-21
+
+Regenerated the display policy from the installed Questie 12.12.0 and QuestieDB
+Forever 1.1.4 (contract 4). There are now 633 hidden or conditional quest IDs
+and 1,411 tag corrections, including 238 PvP overrides. The event-category
+coverage remains 313 quests, with 220 in the holiday list and 109 in the AQ War
+Effort list. The lists overlap. See [event coverage](EventCoverage.md).
+
+QuestieDB now marks Quel'ana Quickgale's four taming and training quests as
+Alliance Skyborne only. Elayaa's referral still permits both Skyborne races.
+The provider also widens Diplomatic Incident's Paladin race mask and records
+Modera at 68.62, 45.13. The integration checks confirm QuestLite respects these
+native records and preserves them across map scans.
+
+All 117 offline behavior tests, both installed-provider profiles and package
+checks passed. Live Forever map rendering remains pending.
+
+[Questie 12.12.0 bundle](https://github.com/Questie/Questie/releases/tag/bundle/v12.12.0%2Bv1.1.4)
+and [QuestieDB 1.1.4](https://github.com/Questie/QuestieDB/releases/tag/v1.1.4).
+
+## Reference refresh 2026-11-23
+
+Regenerated the bundled policy with Questie 12.12.0 and QuestieDB Forever
+1.1.5. The refresh adds one tag override for quest 97413. The 633
+hidden or conditional quests and 238 PvP overrides remain at the previous counts.

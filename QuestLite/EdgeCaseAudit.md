@@ -1,5 +1,22 @@
 # Edge-case audit, 0.2.11
 
+## Empty item drop-rate section - 0.4.23 (2026-11-22)
+
+ItemTooltip previously added its heading before finding a usable rate, then
+displayed an unknown-data placeholder. It now starts the section only when a
+known NPC rate exists. Items with unknown rates or no NPC sources receive no
+lines, display call or duplicate-token mutation. Known rates, including zero,
+source limits, duplicate protection and inline creature annotations are retained.
+The existing regression now checks that the native name/Soulbound/Unique lines
+remain unchanged across repeated unknown/object-only item callbacks. All 117 Lua
+tests and two packaging tests pass.
+
+Forever client smoke record: the user's 2026-11-22 screenshot reproduces the old
+two-line empty section on Shredder Operating Manual - Chapter 3. Post-fix client
+verification is pending: reload 0.4.23, hover that item and verify only the native
+lines remain; hover a quest item with a known rate and verify its estimate still
+appears. Tooltip hook registration and protected UI behavior are unchanged.
+
 These bugs were reproduced in the offline Lua 5.1 harness before being fixed:
 
 - Closing the world map cleared the shared tooltip even when a minimap icon

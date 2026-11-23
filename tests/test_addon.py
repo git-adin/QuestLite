@@ -1482,8 +1482,17 @@ class AddonTests(unittest.TestCase):
             quests[1]={objectives={[3]={{999}}}}; active[1]=1; Fire('QUEST_LOG_UPDATE')
             items[999]={name='Custom item',npcDrops={10}}
             local tip=CreateFrame('GameTooltip'); tip:SetOwner(UIParent,'ANCHOR_NONE')
+            AddNativeTooltipLine(tip,'Custom item')
+            AddNativeTooltipLine(tip,'Soulbound')
+            AddNativeTooltipLine(tip,'Unique')
+            local shown=0; tip.Show=function() shown=shown+1 end
             ns.testDropChances.ItemTooltip(tip,{id=999})
-            assert(tip.lines[2]=='Unknown: no NPC drop-rate data')
+            ns.testDropChances.ItemTooltip(tip,{id=999})
+            assert(table.concat(tip.lines,'|')=='Custom item|Soulbound|Unique')
+            assert(shown==0 and tip.QuestLiteDropToken==nil,'Unknown rate mutated tooltip state')
+            items[999].npcDrops={}
+            ns.testDropChances.ItemTooltip(tip,{id=999})
+            assert(#tip.lines==3 and shown==0,'Object-only item gained an empty section')
             tip:SetOwner(UIParent,'ANCHOR_NONE')
             AddNativeTooltipLine(tip,'0/1 Custom item')
             ns.testDropChances.UnitTooltip(tip,{guid='Creature-0-1-0-0-10-000001'})

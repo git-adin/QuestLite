@@ -1,4 +1,4 @@
-# QuestLite 0.4.22
+# QuestLite 0.4.23
 
 A focused quest map and loot visibility addon for World of Warcraft: Forever
 (Interface 16001). Requires **QuestieDB**. Questie and QuestieTrace are optional.
@@ -281,8 +281,9 @@ abandonment and turn-in update the list; no objective markers are added.
 Rates use QuestieDB's Classic support data: manual Era corrections first, then
 quest-only private-server data, then crowdsourced data, including correction
 references to a specific source. These are **database estimates**; actual Forever
-server rates can differ. Missing data is shown as unknown, including items that
-come from objects when no NPC rate is known. Restricted instance creature tooltips
+server rates can differ. When no NPC rate is known, the item's native tooltip
+is left unchanged, without an empty heading or unknown-data message. This also
+applies to object-looted and combined quest items. Restricted instance creature tooltips
 are left to the client.
 
 The addon indexes item-row offsets in existing support strings on first use,
@@ -420,8 +421,8 @@ Before treating this as a stable release:
 
 ## Credits and license
 
-Data from ForeverDB.net (https://foreverdb.net). Selected observed fixed quest
-levels and a missing NPC location were compared against ForeverDB 0.57.16; see
+Data from ForeverDB.net (https://foreverdb.net). The local fixed-level and NPC
+location corrections were introduced and reviewed across several snapshots. See
 [the ForeverDB audit](https://github.com/git-adin/QuestLite/blob/main/QuestLite/ForeverDBAudit.md) and [FOREVERDB_LICENSE.txt](FOREVERDB_LICENSE.txt).
 These compact corrections are included locally; ForeverDB is not a dependency.
 

@@ -1,10 +1,15 @@
-# QuestLite 0.4.22
+# QuestLite 0.4.23
 
 The install ZIP includes the game files, player documentation, and required notices. The development audits are available in the source repository.
 
 Download **QuestLite.zip** below and extract it into your WoW Forever
 `_forever_/Interface/AddOns/` folder. The result should be
 `AddOns/QuestLite/QuestLite.toc`.
+
+Fixed in 0.4.23: item tooltips no longer add an empty drop-chance heading and
+unknown-data message when there is no usable NPC drop estimate. Known source
+rates and inline creature percentages are preserved.
+The bundled policy was also refreshed against QuestieDB Forever 1.1.5.
 
 Updated in 0.4.22: refreshed availability data against Questie 12.11.1 and
 QuestieDB 1.1.3: eight additional hidden/conditional IDs and 22 PvP tag corrections,

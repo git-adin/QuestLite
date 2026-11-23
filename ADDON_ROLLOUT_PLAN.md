@@ -2,7 +2,7 @@
 
 ## 1. Establish the release source for each add-on
 
-- Use the existing Git checkout for each add-on as the source for releases. Record the six checkout locations and upstream repositories in a workspace index. Give AuctionPriceLite and WritCrateLite durable checkout locations outside `dist/` so build cleanup cannot remove a checkout.
+- Use the existing Git checkout for each add-on as the source for releases. Record checkout locations and configured upstream repositories in the [workspace index](ADDONS.md). Give AuctionPriceLite and WritCrateLite durable checkout locations outside `dist/` so build cleanup cannot remove a checkout.
 - Compare the loose AuctionPriceLite and WritCrateLite copies with their checkouts and inspect working-tree status. Preserve any local-only changes. Move the combined pricing integration test out of the QuestLite workspace root into the WritCrateLite checkout, with an explicit path to the AuctionPriceLite checkout for the paired run. Keep WritCrateLite's standalone tests runnable without AuctionPriceLite installed.
 - Rebuild the local WritCrateLite stable ZIP from the chosen checkout. Its current workspace copy contains AuctionPriceLite and older WritCrateLite code. Use the matching versioned ZIP as a baseline and keep the previous bundle identifiable until the replacement passes package checks.
 
