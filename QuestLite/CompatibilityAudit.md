@@ -374,3 +374,6 @@ and [QuestieDB 1.1.4](https://github.com/Questie/QuestieDB/releases/tag/v1.1.4).
 Regenerated the bundled policy with Questie 12.12.0 and QuestieDB Forever
 1.1.5. The refresh adds one tag override for quest 97413. The 633
 hidden or conditional quests and 238 PvP overrides remain at the previous counts.
+Both offline installed-provider profiles passed with QuestieDB 1.1.5. The live
+item-tooltip check remains pending. The installed build was verified against
+the package on disk.

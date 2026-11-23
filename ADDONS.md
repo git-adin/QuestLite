@@ -10,7 +10,7 @@ Run development and release commands from the add-on's own checkout. The table p
 | ProfessionGuide | `ProfessionGuide/` | `python tests/test_addon.py` and `python tests/test_package.py` | [ProfessionGuide](https://github.com/git-adin/ProfessionGuide) |
 | AuctionPriceLite | `checkouts/AuctionPriceLite/` | `python tests/test_addon.py` and `python tests/test_package.py` | [AuctionPriceLite](https://github.com/git-adin/AuctionPriceLite) |
 | WritCrateLite | `checkouts/WritCrateLite/` | `python tests/test_writ_crate.py` and `python tests/test_package.py` | [WritCrateLite](https://github.com/git-adin/WritCrateLite) |
-| PetStatusLite | `checkouts/PetStatusLite/` | `python tests/test_addon.py` and `python tests/test_package.py` | Local Git repository, no remote configured |
+| PetStatusLite | `checkouts/PetStatusLite/` | `python tests/test_addon.py` and `python tests/test_package.py` | [PetStatusLite](https://github.com/git-adin/PetStatusLite) |
 
 The loose `AuctionPriceLite/` and `WritCrateLite/` folders at the workspace root are snapshots. Make edits and build from the matching `checkouts/` repository.
 
