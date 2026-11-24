@@ -801,6 +801,64 @@ lua.execute(b'''
     UnitLevel,active,done=oldLevel,oldActive,oldDone
 ''')
 print('Zone-drop destinations: all three OOX quests and Pendant of Myzrael point to native NPC/object finishers without changing pickup eligibility.')
+lua.execute(b'''
+    local steps,more=guide.GetNextChainSteps(351)
+    local found=false
+    for _,entry in ipairs(steps) do
+        if entry.id==648 then
+            found=true
+            assert(entry.name=='Rescue OOX-17/TN!' and entry.location:find('OOX-17/TN',1,true))
+        end
+    end
+    assert(found and not more,'Actual OOX next quest missing')
+    CheckNativeRequirements(351); CheckNativeRequirements(648)
+    guide.OpenQuestGuide(351,'next')
+    assert(QuestLiteOptions.guideMode=='next' and QuestLiteOptions.rows[1].button:IsShown())
+    QuestLiteOptions:Hide()
+''')
+print('Next-chain guide: actual OOX delivery links to rescue quest with known pickup location; native provider data preserved.')
+lua.execute(b'''
+    local oldItems,oldLevel,oldRace,oldClass,oldFaction=C_Item,UnitLevel,UnitRace,UnitClass,UnitFactionGroup
+    local oldActive,oldDone,oldDrops=active,done,guide.db.itemDropLocations
+    local itemID=LibQuestieDB.Quest.startedBy(94316)[3][1]
+    assert(itemID==264116)
+    local owned=0
+    C_Item={GetItemCount=function(id,bank) assert(bank==false); return id==itemID and owned or 0 end}
+    local player={level=60,race=96,class=3,active={},skills={},skillsKnown=true}
+    local count=0
+    for id in pairs(guide.craftsmanWritQuests) do
+        count=count+1
+        local name=LibQuestieDB.Quest.name(id)
+        assert(name and name:find("Craftsman's Writ:",1,true)==1,'Incorrect writ classification')
+        assert(not guide.test.Eligible(id,player),'Unowned writ advertised as available: '..id)
+        CheckNativeRequirements(id)
+    end
+    assert(count==150)
+    owned=1; assert(guide.test.Eligible(94316,player),'Owned screenshot writ was lost')
+    UnitLevel=function() return 60 end
+    UnitRace=function() return 'Skyborne','Skyborne',96 end
+    UnitClass=function() return 'Hunter','HUNTER',3 end
+    UnitFactionGroup=function() return 'Horde' end
+    active={}; done={}; guide.db.itemDropLocations=true
+    local function Check(wanted,ready)
+        local found=false
+        guide.BuildMap(1447,function(id,kind,label,x,y,confirmed,zone,sx,sy,dropStarter)
+            if id==94316 then
+                found=true
+                assert(label=='Archmage Xylem')
+                assert(kind==(ready and 'turnin' or 'pickup'))
+                assert(ready and dropStarter==nil or not ready and dropStarter=='writ')
+            end
+        end,Checkpoint)
+        assert(found==wanted,'Actual Xylem writ marker incorrect')
+    end
+    Check(true)
+    owned=0; Check(false)
+    active={94316}; done[94316]=true; guide.db.itemDropLocations=false; Check(true,true)
+    C_Item,UnitLevel,UnitRace,UnitClass,UnitFactionGroup=oldItems,oldLevel,oldRace,oldClass,oldFaction
+    active,done,guide.db.itemDropLocations=oldActive,oldDone,oldDrops
+''')
+print('Craftsman writ integration: all 150 require an owned starter in strict mode; actual Xylem reference and ready turn-in verified.')
 if sample_horde:
     lua.execute(b'''
         observed={}; function Collect(id,kind,label,x,y,confirmed)

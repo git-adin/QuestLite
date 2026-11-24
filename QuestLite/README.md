@@ -1,4 +1,12 @@
-# QuestLite 0.4.23
+# QuestLite 0.4.25
+
+Known Craftsman's Writs require their starter item in your bags in **Only available
+quests** mode, unless a current NPC offer confirms availability. Their delivery
+NPCs are not advertised as ordinary pickups: unaccepted writs use a **Use writ**
+reference, reminding you to use the item first. Bag changes refresh both maps.
+The item-started quest toggle controls these references; ready turn-ins remain
+visible. Broad browsing can show unowned writ references, with the same item
+requirement reminder. Generic item drops and quest-provided items are unchanged.
 
 A focused quest map and loot visibility addon for World of Warcraft: Forever
 (Interface 16001). Requires **QuestieDB**. Questie and QuestieTrace are optional.
@@ -44,7 +52,7 @@ unidentified protected-action failure.
 4. Open a **continent or zone map**, then hover a marker to see nearby quests
    grouped by quest giver. Continent tooltips also show the source zone. Hold Shift for
    objective text and coordinates; the tooltip opens at the cursor.
-5. Use `/ql` or either QuestLite map button to open the Map / Filters / Prerequisites window.
+5. Use `/ql` or either QuestLite map button to open the Map / Filters / Quest chain window.
 
 The guide and expanded marker details show quest level separately from minimum
 pickup level. A red quest level describes difficulty, not necessarily its pickup
@@ -134,11 +142,15 @@ Open `/ql` or click either QuestLite map button. The window has three tabs:
 
 - **Map:** world-map/minimap icons, pickups, turn-ins, loot sparkles and tooltips.
 - **Filters:** availability, PvP, cloth donations, item-drop sources and the lower-level cutoff.
-- **Prerequisites:** search part of a quest name, paste a quest link, or open a quest directly from a marker.
+- **Quest chain:** search part of a quest name, paste a quest link, or open a quest directly from a marker. Switch between **Prerequisites** and **Next in chain**.
 
-Left-click a marker to open its prerequisite guide. Grouped markers let you choose
-one quest. The guide shows the missing steps, their pickup or return NPCs, and
-known zone coordinates. Click a step to inspect that quest's own prerequisites.
+Left-click a marker to open its quest guide. Grouped markers let you choose
+one quest. The guide shows missing steps and known pickup/return locations.
+**Next in chain** lists direct follow-ups with their pickup locations and current
+accepted/completed status. Click a row to inspect that quest's chain. Markers
+start with prerequisites when steps are missing, otherwise with follow-ups;
+both modes remain available. A missing database link is shown explicitly, not
+inferred from the quest title. Follow-ups can have other unmet requirements.
 When alternatives are shown, choose one branch; they are not cumulative tasks.
 Accepted quests point to their turn-in location. Visible guidance refreshes after
 quest-log changes or turn-ins. Hidden quests remain searchable.

@@ -47,6 +47,7 @@ end
 
 local function Search()
     panel.selected = nil
+    panel.guideMode = nil
     panel.searched = true
     panel.results, panel.more = ns.FindQuestMatches(panel.search:GetText(), 20)
     panel.page = 1
@@ -73,7 +74,7 @@ local function GetPanel()
     Text(panel, "Quest maps and a clear path to your next pickup", nil, 20, -42)
     Button(panel, "X", 650, -12, 30, function() panel:Hide() end)
     panel.tabs = {}
-    for index, row in ipairs({{"map", "Map"}, {"filters", "Filters"}, {"guide", "Prerequisites"}}) do
+    for index, row in ipairs({{"map", "Map"}, {"filters", "Filters"}, {"guide", "Quest chain"}}) do
         local key, label = row[1], row[2]
         panel.tabs[key] = Button(panel, label, 20+(index-1)*150, -68, 140, function()
             panel.tab=key; Render()
@@ -94,7 +95,7 @@ local function GetPanel()
     Check(map, "minimapButton", "Minimap options button", "Drag the button around the minimap.", 356, -148)
     Check(map, "dropChances", "Quest item drop chances", "Database estimates in item and creature tooltips.", 356, -214)
     Check(map, "enabled", "Quest loot sparkles", "Switching off needs a full game restart.", 356, -280)
-    Text(map, "Click a quest marker to view its prerequisites. Right-click to hide an individual pickup.", nil, 24, -444)
+    Text(map, "Click a quest marker to view its quest chain. Right-click to hide an individual pickup.", nil, 24, -444)
     local filters = panel.pages.filters
     Text(filters, "Choose the pickups you want to see", "GameFontNormalLarge", 24, -112)
     Check(filters, "filterAvailable", "Only available quests", "Check known level, faction, class and quest requirements.", 24, -148)
@@ -123,12 +124,19 @@ local function GetPanel()
         panel.page=1; Render()
     end)
     panel.guideInfo = Text(guide, "", nil, 24, -187, 650)
+    panel.guideModes={}
+    for index,mode in ipairs({"prereqs","next"}) do
+        panel.guideModes[mode]=Button(guide,mode=="next" and "Next in chain" or "Prerequisites",
+            24+(index-1)*180,-239,170,function()
+                panel.guideMode=mode; panel.page=1; Render()
+            end)
+    end
     panel.rows = {}
     for index=1,PER_PAGE do
-        local y = -239-(index-1)*66
+        local y = -279-(index-1)*56
         local row = {}
         row.button = Button(guide, "", 24, y, 650, function(self)
-            if self.questID then ns.OpenQuestGuide(self.questID) end
+            if self.questID then ns.OpenQuestGuide(self.questID,panel.selected and panel.guideMode) end
         end)
         row.detail = Text(guide, "", nil, 32, y-30, 630)
         panel.rows[index]=row
@@ -148,6 +156,7 @@ local function GetPanel()
     panel:RegisterEvent("QUEST_LOG_UPDATE")
     panel:SetScript("OnEvent", function(self, event)
         if self:IsShown() and self.tab=="guide" and self.selected then
+            if event=="QUEST_TURNED_IN" then self.chainKey=nil end
             local key=ns.GetMapStateKey(true)
             if event=="QUEST_TURNED_IN" or key~=self.routeKey then Render() end
         end
@@ -161,7 +170,7 @@ Render = function()
     for key, box in pairs(panel.checks) do box:SetChecked(ns.db[key]) end
     panel.levelText:SetText(ns.db.showLowLevel and "Cutoff is bypassed while showing all." or ("Hide more than "..ns.db.levelsBelow.." levels below me."))
     for key, button in pairs(panel.tabs) do button:SetText((key==panel.tab and "|cffffd100" or "|cffffffff")
-        .. ({map="Map",filters="Filters",guide="Prerequisites"})[key] .. "|r") end
+        .. ({map="Map",filters="Filters",guide="Quest chain"})[key] .. "|r") end
     if panel.tab~="guide" then panel.search:ClearFocus(); return end
     panel.back:SetShown(panel.selected~=nil)
     local entries, truncated, hints = panel.results or {}, panel.more, nil
@@ -169,17 +178,33 @@ Render = function()
         local summary = ns.GetQuestSummary(panel.selected)
         hints, entries, truncated = ns.GetPrerequisiteHints(panel.selected)
         entries=entries or {}
+        panel.guideMode=panel.guideMode or ((#entries>0 or summary.availabilityNote) and "prereqs" or "next")
         panel.guideTitle:SetText("["..summary.level.."] "..summary.name)
         local location,active,completed=ns.GetQuestLocation(panel.selected)
         local status=completed and "Quest already completed." or active and "In your quest log. Return here when the objectives are complete."
             or (#entries>0 and "Complete required steps; choose one when marked Alternative. Click a step for details."
                 or (#hints>0 and table.concat(hints,"\n") or "No missing quest turn-ins found. Other requirements may still apply."))
         if not active and not completed and summary.availabilityNote then status=summary.availabilityNote end
+        if panel.guideMode=="next" then
+            local key=panel.selected..":"..ns.GetMapStateKey(true)
+            if panel.chainKey~=key then
+                panel.chainSteps,panel.chainMore=ns.GetNextChainSteps(panel.selected)
+                panel.chainKey=key
+            end
+            entries,truncated=panel.chainSteps,panel.chainMore
+            status=#entries>0 and "Known direct follow-ups. Other requirements may apply. Click a quest for its chain."
+                or "No known follow-up quests in the database."
+        end
         panel.guideInfo:SetText(ns.GetQuestLevelDescription(panel.selected).."\n"..location.."\n"..status)
         panel.routeKey=ns.GetMapStateKey(true)
     else
         panel.guideTitle:SetText("Find a quest for your character")
         panel.guideInfo:SetText(#entries>0 and "Choose a quest below." or panel.searched and "No matching quests. Try a shorter name or a quest link." or "Search part of a quest name, paste a quest link, or click a map marker.")
+    end
+    for mode,button in pairs(panel.guideModes) do
+        button:SetShown(panel.selected~=nil)
+        button:SetText((panel.guideMode==mode and "|cffffd100" or "|cffffffff")
+            .. (mode=="next" and "Next in chain" or "Prerequisites").."|r")
     end
     local pages=math.max(1,math.ceil(#entries/PER_PAGE))
     panel.page=math.max(1,math.min(panel.page or 1,pages))
@@ -196,13 +221,13 @@ Render = function()
             else
                 local summary=ns.GetQuestSummary(id)
                 row.button:SetText("["..summary.level.."] "..summary.name)
-                row.detail:SetText("View prerequisite route")
+                row.detail:SetText("View quest chain")
             end
         else row.button.questID=nil end
     end
     panel.previous:SetShown(panel.page>1)
     panel.next:SetShown(panel.page<pages)
-    panel.pageText:SetText("Page "..panel.page.." of "..pages..(truncated and " | More matches or earlier steps omitted; refine your search." or ""))
+    panel.pageText:SetText("Page "..panel.page.." of "..pages..(truncated and " | More quests or steps omitted." or ""))
 end
 
 function ns.OpenOptions(tab)
@@ -211,9 +236,10 @@ function ns.OpenOptions(tab)
     Render(); frame:Show()
 end
 
-function ns.OpenQuestGuide(id)
+function ns.OpenQuestGuide(id,mode)
     local frame=GetPanel()
     frame.selected,frame.page=id,1
+    frame.guideMode=mode
     frame.search:SetText(ns.GetQuestSummary(id).name)
     frame.search:ClearFocus()
     ns.OpenOptions("guide")

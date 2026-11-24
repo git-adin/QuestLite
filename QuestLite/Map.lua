@@ -132,6 +132,7 @@ function Pin:OnMouseEnter()
             local summary = ns.GetQuestSummary(id)
             local color = GetQuestDifficultyColor and GetQuestDifficultyColor(summary.level)
             local status = entry.kind == "turnin" and "Complete" or entry.confirmed and "Available"
+                or entry.dropStarter == "writ" and "Use writ"
                 or entry.dropStarter == "destination" and "Item quest destination"
                 or entry.dropStarter and "Item drop" or ns.db.filterAvailable and "Pickup" or "Unfiltered"
             if summary.classification then status = summary.classification .. " | " .. status end
@@ -142,9 +143,11 @@ function Pin:OnMouseEnter()
             if entry.zone then tip:AddLine("  " .. entry.zone, .65, .7, .75) end
             if entry.dropStarter == "destination" then
                 tip:AddLine("Turn-in location; obtain the zone-wide quest-starting drop first.", .65, .8, 1, true)
+            elseif entry.dropStarter == "writ" then
+                tip:AddLine("Delivery location; use the writ item in your bags to start this quest.", .65, .8, 1, true)
             end
             if shift then
-                if entry.dropStarter and entry.dropStarter ~= "destination" then
+                if entry.dropStarter == true then
                     tip:AddLine("Possible source area; obtain the quest-starting item first.", .65, .8, 1, true)
                 end
                 ns.ShowQuestDetails(tip, id, true)

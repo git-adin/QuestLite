@@ -1,10 +1,23 @@
-# QuestLite 0.4.23
+# QuestLite 0.4.25
 
 The install ZIP includes the game files, player documentation, and required notices. The development audits are available in the source repository.
 
 Download **QuestLite.zip** below and extract it into your WoW Forever
 `_forever_/Interface/AddOns/` folder. The result should be
 `AddOns/QuestLite/QuestLite.toc`.
+
+Fixed in 0.4.25: Craftsman's Writs no longer advertise their delivery NPC as an
+ordinary pickup. Strict availability requires the writ in your bags or a current
+server offer. Owned unaccepted writs use a labelled **Use writ** destination;
+ready turn-ins remain visible. Applies to all 150 known writs, including Xylem's
+Potion of Demonslaying order. Both maps refresh when bag contents change.
+
+New in 0.4.24: the quest window now includes **Next in chain** beside
+**Prerequisites**. View direct follow-ups, their known pickup locations, and
+accepted/completed status. Click a follow-up to continue through its chain.
+Markers open the prerequisite view when required turn-ins are missing, otherwise
+the follow-up view. Quests without a recorded follow-up show an explicit message.
+This guide does not claim that every follow-up is currently available to pick up.
 
 Fixed in 0.4.23: item tooltips no longer add an empty drop-chance heading and
 unknown-data message when there is no usable NPC drop estimate. Known source
