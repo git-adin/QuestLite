@@ -21,9 +21,9 @@ Validation: 121 offline regressions, two package tests and both installed-provid
 profiles; all 150 IDs, actual Xylem records, item gain/loss, absent NPC offer,
 unknown inventory, broad view and ready turn-ins covered. Provider rows unchanged.
 Client smoke record: supplied screenshot demonstrates the pre-fix false pickup.
-Post-fix client retest pending: reload 0.4.25, verify Xylem's writ absent without
-the item in strict mode; obtain a writ and check Use writ; accept/complete it and
-check the ready turn-in. Emulated tests do not verify live UI appearance.
+On November 23, the player verified in Forever 0.4.25 that Xylem's writ was
+absent in strict mode without the item. Live checks for the owned-writ **Use
+writ** marker and the ready turn-in remain pending.
 
 ## Next-in-chain navigation - 0.4.24 (2026-11-23)
 
@@ -47,11 +47,9 @@ precedence, unrelated grandchild exclusion, status refresh, row reuse, paginatio
 terminal quests and navigation between modes.
 
 Forever client smoke record: the user's screenshot confirms the existing marker
-opens the guide, with an empty prerequisite list for quest 470. Post-change client
-smoke is pending: reload 0.4.24, open quest 470 and verify the no-follow-up message;
-open an OOX delivery and use Next in chain to inspect its rescue quest; toggle
-Prerequisites and check pickup/location rows, paging and window bounds. No live
-client rendering success is claimed from the emulated tests.
+opens the guide, with an empty prerequisite list for quest 470. On November 23,
+the player confirmed that **Next in chain** opened correctly in 0.4.25. The
+specific 470 and OOX cases, paging, and window bounds were covered offline.
 
 ## Empty item drop-rate section - 0.4.23 (2026-11-22)
 
