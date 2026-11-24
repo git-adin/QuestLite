@@ -369,6 +369,119 @@ class AddonTests(unittest.TestCase):
             end
         """)
 
+    def test_craftsmans_writ_requires_item_and_uses_delivery_reference_on_both_maps(self):
+        self.check("""
+            npcs[8379]={name='Archmage Xylem',spawns={[12]={{22,30}}}}
+            items[264116]={name="Craftsman's Writ: Potion of Demonslaying"}
+            quests[94316]={name="Craftsman's Writ: Potion of Demonslaying",questLevel=60,requiredLevel=1,
+                startedBy={{8379},{},{264116}},finishedBy={{8379}},specialFlags=1}
+            local owned=0
+            C_Item={GetItemCount=function(id,includeBank)
+                assert(id==264116 and includeBank==false)
+                return owned
+            end}
+            EnableMinimapMock(); ns.InitMinimap(); ns.RequestMap(); Tick(120)
+            local function Check(wanted,ready)
+                local world,mini=false,false
+                for _,pin in ipairs(WorldMapFrame.pins) do
+                    local entry=pin.quests[94316]
+                    if entry then
+                        world=true
+                        assert(entry.kind==(ready and 'turnin' or 'pickup'))
+                        assert(ready and entry.dropStarter==nil or not ready and entry.dropStarter=='writ')
+                        pin:OnMouseEnter()
+                        local text=table.concat(QuestLiteTooltip.lines,' ')
+                        if not ready then assert(text:find('Use writ',1,true) and text:find('use the writ item',1,true)) end
+                    end
+                end
+                for _,pin in pairs(ns.testMinimapActive) do if pin.data.quests[94316] then mini=true end end
+                assert(world==wanted and mini==wanted,'Writ ownership mismatch between maps')
+            end
+            Check(false)
+            owned=1; Fire('BAG_UPDATE_DELAYED'); Tick(120); Check(true)
+            UnitGUID=function() return 'Creature-0-1-0-0-8379-000001' end
+            C_GossipInfo={GetAvailableQuests=function() return {} end}
+            Fire('GOSSIP_SHOW'); Tick(120); Check(true)
+            owned=0; Fire('BAG_UPDATE_DELAYED'); Tick(120); Check(false)
+            ns.db.filterAvailable=false; ns.RequestMap(); Tick(120); Check(true)
+            ns.db.filterAvailable=true; active={94316}; done[94316]=true
+            ns.db.itemDropLocations=false; Fire('QUEST_LOG_UPDATE'); Tick(120); Check(true,true)
+        """)
+
+    def test_writ_unknown_inventory_is_not_an_available_pickup_and_other_quests_are_unchanged(self):
+        self.check("""
+            quests[94316]={startedBy={{8379},{},{264116}},requiredLevel=1}
+            quests[900001]={startedBy={{8379},{},{264116}},sourceItemId=264116,requiredLevel=1}
+            local player={level=60,race=96,class=3,active={},skills={}}
+            C_Item={GetItemCount=function() error('Unavailable inventory') end}
+            assert(not ns.test.Eligible(94316,player))
+            assert(ns.test.Eligible(900001,player),'Generic mixed giver or provided item was reclassified')
+            C_Item.GetItemCount=function() return 1 end
+            assert(ns.test.Eligible(94316,player))
+            assert(ns.test.Eligible(900001,player))
+        """)
+
+    def test_next_chain_merges_native_links_and_reverse_requirements_without_wrong_branches(self):
+        self.check("""
+            npcs[10]={name='Next giver',spawns={[12]={{22,30}}}}
+            quests[1]={name='Current',nextQuestInChain=2}
+            quests[2]={name='Explicit and reverse',preQuestSingle={1},startedBy={{10}}}
+            quests[3]={name='Group branch',preQuestGroup={1,90},startedBy={{10}}}
+            quests[4]={name='Alternative branch',preQuestSingle={1,91},startedBy={{10}}}
+            quests[5]={name='Wrong class',preQuestSingle={1},requiredClasses=8}
+            quests[6]={name='Wrong race',preQuestSingle={1},requiredRaces=2}
+            quests[7]={name='Native single wins',preQuestSingle={90},preQuestGroup={1}}
+            quests[8]={name='Grandchild only',preQuestSingle={2}}
+            quests[9]={name='Unrelated'}
+            quests[95183]={name='Local fallback rock',startedBy={{10}}}
+            ns.chainPrerequisiteOverrides[95183]={1}
+            local steps,more=ns.GetNextChainSteps(1)
+            assert(#steps==4 and not more)
+            local expected={2,3,4,95183}
+            for index,entry in ipairs(steps) do
+                assert(entry.id==expected[index] and entry.location:find('Next giver',1,true))
+                assert(entry.action=='Follow-up')
+            end
+            quests[95183].preQuestSingle={90}
+            assert(#ns.GetNextChainSteps(1)==3,'New native gate did not replace local fallback')
+            active={2}; done[2]=true; completed[3]=true
+            steps=ns.GetNextChainSteps(1)
+            assert(steps[1].action=='Turn in' and steps[2].action=='Completed')
+            assert(quests[2].preQuestSingle[1]==1 and #quests[3].preQuestGroup==2)
+        """)
+
+    def test_next_chain_ui_switches_drills_down_pages_and_handles_terminal_quests(self):
+        self.check("""
+            quests[1]={name='Start',nextQuestInChain=2}
+            for id=2,26 do quests[id]={name='Branch '..id,preQuestSingle={1}} end
+            quests[30]={name='End',preQuestSingle={2}}
+            ns.OpenQuestGuide(1)
+            local panel=QuestLiteOptions
+            assert(panel.guideMode=='next' and #panel.chainSteps==20 and panel.chainMore)
+            assert(panel.rows[1].button.questID==2 and panel.guideModes.next:IsShown())
+            assert(panel.guideModes.next.text:find('|cffffd100',1,true))
+            assert(panel.next:IsShown()); panel.next:GetScript('OnClick')(panel.next)
+            assert(panel.page==2 and panel.rows[1].button.questID==6)
+            panel.previous:GetScript('OnClick')(panel.previous)
+            panel.rows[1].button:GetScript('OnClick')(panel.rows[1].button)
+            assert(panel.selected==2 and panel.guideMode=='next' and panel.rows[1].button.questID==30)
+            panel.guideModes.prereqs:GetScript('OnClick')(panel.guideModes.prereqs)
+            assert(panel.rows[1].button.questID==1)
+            panel.guideModes.next:GetScript('OnClick')(panel.guideModes.next)
+            panel.rows[1].button:GetScript('OnClick')(panel.rows[1].button)
+            assert(panel.selected==30 and panel.guideInfo.text:find('No known follow-up',1,true))
+            assert(not panel.rows[1].button:IsShown())
+            local count=#frames
+            for i=1,5 do ns.OpenQuestGuide(1) end
+            assert(#frames==count and #panel.rows==4,'Chain navigation allocated unbounded UI')
+            active={2}; Fire('QUEST_LOG_UPDATE')
+            assert(panel.chainSteps[1].action=='In quest log','Visible chain state did not refresh')
+            done[2]=true; Fire('QUEST_LOG_UPDATE')
+            assert(panel.chainSteps[1].action=='Turn in')
+            completed[3]=true; Fire('QUEST_TURNED_IN',3)
+            assert(panel.chainSteps[2].action=='Completed','Turn-in did not invalidate the guide cache')
+        """)
+
     def test_step_one_rock_waits_for_might_makes_right_turnin_on_both_maps(self):
         self.check("""
             npcs[259988]={name='Gorgegut',spawns={[12]={{22,30}}}}
@@ -1482,8 +1595,17 @@ class AddonTests(unittest.TestCase):
             quests[1]={objectives={[3]={{999}}}}; active[1]=1; Fire('QUEST_LOG_UPDATE')
             items[999]={name='Custom item',npcDrops={10}}
             local tip=CreateFrame('GameTooltip'); tip:SetOwner(UIParent,'ANCHOR_NONE')
+            AddNativeTooltipLine(tip,'Custom item')
+            AddNativeTooltipLine(tip,'Soulbound')
+            AddNativeTooltipLine(tip,'Unique')
+            local shown=0; tip.Show=function() shown=shown+1 end
             ns.testDropChances.ItemTooltip(tip,{id=999})
-            assert(tip.lines[2]=='Unknown: no NPC drop-rate data')
+            ns.testDropChances.ItemTooltip(tip,{id=999})
+            assert(table.concat(tip.lines,'|')=='Custom item|Soulbound|Unique')
+            assert(shown==0 and tip.QuestLiteDropToken==nil,'Unknown rate mutated tooltip state')
+            items[999].npcDrops={}
+            ns.testDropChances.ItemTooltip(tip,{id=999})
+            assert(#tip.lines==3 and shown==0,'Object-only item gained an empty section')
             tip:SetOwner(UIParent,'ANCHOR_NONE')
             AddNativeTooltipLine(tip,'0/1 Custom item')
             ns.testDropChances.UnitTooltip(tip,{guid='Creature-0-1-0-0-10-000001'})

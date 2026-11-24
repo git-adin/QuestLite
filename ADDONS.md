@@ -10,8 +10,21 @@ Run development and release commands from the add-on's own checkout. The table p
 | ProfessionGuide | `ProfessionGuide/` | `python tests/test_addon.py` and `python tests/test_package.py` | [ProfessionGuide](https://github.com/git-adin/ProfessionGuide) |
 | AuctionPriceLite | `checkouts/AuctionPriceLite/` | `python tests/test_addon.py` and `python tests/test_package.py` | [AuctionPriceLite](https://github.com/git-adin/AuctionPriceLite) |
 | WritCrateLite | `checkouts/WritCrateLite/` | `python tests/test_writ_crate.py` and `python tests/test_package.py` | [WritCrateLite](https://github.com/git-adin/WritCrateLite) |
+| PetStatusLite | `checkouts/PetStatusLite/` | `python tests/test_addon.py` and `python tests/test_package.py` | [PetStatusLite](https://github.com/git-adin/PetStatusLite) |
 
 The loose `AuctionPriceLite/` and `WritCrateLite/` folders at the workspace root are snapshots. Make edits and build from the matching `checkouts/` repository.
+
+## Data sources
+
+| Add-on | Data source |
+| --- | --- |
+| QuestLite | Installed QuestieDB at runtime, with local corrections reviewed against Questie and ForeverDB. See the [compatibility audit](QuestLite/CompatibilityAudit.md). |
+| HunterLens | Bundled TrueshotLodge and Forever Hunter Pets data, with selected Petopia and Wowhead checks. See [data provenance](HunterLens/HunterLens/SOURCES.md). |
+| ItemFarmingTool | Item and inventory data from the Forever client. See [client compatibility](ItemFarmingTool/README.md#compatibility-and-validation). |
+| ProfessionGuide | WoW-Professions Forever routes and trainer references. See [source provenance](ProfessionGuide/SOURCES.md). |
+| AuctionPriceLite | Player-run scans of the Forever Auction House. See the [player guide](checkouts/AuctionPriceLite/AuctionPriceLite/README.md). |
+| WritCrateLite | Catalog data from Craftman's Helper and ForeverDB, with optional pricing providers. See [data and license](checkouts/WritCrateLite/WritCrateLite/README.md#data-and-license). |
+| PetStatusLite | Hunter pet status and progression from the Forever client. See the [player guide](checkouts/PetStatusLite/PetStatusLite/README.md). |
 
 From any checkout, run `python -m pip install --target .tools -r tests/requirements.txt` for offline Lua tests and `python tools/package.py` for a local build. For a release candidate use `python tools/package.py --tag vX.Y.Z`, replacing the tag with the version in the add-on's TOC. The checkout's own `dist/` contains its installable ZIPs and checksum manifest.
 

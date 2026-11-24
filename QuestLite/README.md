@@ -1,4 +1,12 @@
-# QuestLite 0.4.22
+# QuestLite 0.4.25
+
+Known Craftsman's Writs require their starter item in your bags in **Only available
+quests** mode, unless a current NPC offer confirms availability. Their delivery
+NPCs are not advertised as ordinary pickups: unaccepted writs use a **Use writ**
+reference, reminding you to use the item first. Bag changes refresh both maps.
+The item-started quest toggle controls these references; ready turn-ins remain
+visible. Broad browsing can show unowned writ references, with the same item
+requirement reminder. Generic item drops and quest-provided items are unchanged.
 
 A focused quest map and loot visibility addon for World of Warcraft: Forever
 (Interface 16001). Requires **QuestieDB**. Questie and QuestieTrace are optional.
@@ -44,7 +52,7 @@ unidentified protected-action failure.
 4. Open a **continent or zone map**, then hover a marker to see nearby quests
    grouped by quest giver. Continent tooltips also show the source zone. Hold Shift for
    objective text and coordinates; the tooltip opens at the cursor.
-5. Use `/ql` or either QuestLite map button to open the Map / Filters / Prerequisites window.
+5. Use `/ql` or either QuestLite map button to open the Map / Filters / Quest chain window.
 
 The guide and expanded marker details show quest level separately from minimum
 pickup level. A red quest level describes difficulty, not necessarily its pickup
@@ -134,11 +142,15 @@ Open `/ql` or click either QuestLite map button. The window has three tabs:
 
 - **Map:** world-map/minimap icons, pickups, turn-ins, loot sparkles and tooltips.
 - **Filters:** availability, PvP, cloth donations, item-drop sources and the lower-level cutoff.
-- **Prerequisites:** search part of a quest name, paste a quest link, or open a quest directly from a marker.
+- **Quest chain:** search part of a quest name, paste a quest link, or open a quest directly from a marker. Switch between **Prerequisites** and **Next in chain**.
 
-Left-click a marker to open its prerequisite guide. Grouped markers let you choose
-one quest. The guide shows the missing steps, their pickup or return NPCs, and
-known zone coordinates. Click a step to inspect that quest's own prerequisites.
+Left-click a marker to open its quest guide. Grouped markers let you choose
+one quest. The guide shows missing steps and known pickup/return locations.
+**Next in chain** lists direct follow-ups with their pickup locations and current
+accepted/completed status. Click a row to inspect that quest's chain. Markers
+start with prerequisites when steps are missing, otherwise with follow-ups;
+both modes remain available. A missing database link is shown explicitly, not
+inferred from the quest title. Follow-ups can have other unmet requirements.
 When alternatives are shown, choose one branch; they are not cumulative tasks.
 Accepted quests point to their turn-in location. Visible guidance refreshes after
 quest-log changes or turn-ins. Hidden quests remain searchable.
@@ -281,8 +293,9 @@ abandonment and turn-in update the list; no objective markers are added.
 Rates use QuestieDB's Classic support data: manual Era corrections first, then
 quest-only private-server data, then crowdsourced data, including correction
 references to a specific source. These are **database estimates**; actual Forever
-server rates can differ. Missing data is shown as unknown, including items that
-come from objects when no NPC rate is known. Restricted instance creature tooltips
+server rates can differ. When no NPC rate is known, the item's native tooltip
+is left unchanged, without an empty heading or unknown-data message. This also
+applies to object-looted and combined quest items. Restricted instance creature tooltips
 are left to the client.
 
 The addon indexes item-row offsets in existing support strings on first use,
@@ -420,8 +433,8 @@ Before treating this as a stable release:
 
 ## Credits and license
 
-Data from ForeverDB.net (https://foreverdb.net). Selected observed fixed quest
-levels and a missing NPC location were compared against ForeverDB 0.57.16; see
+Data from ForeverDB.net (https://foreverdb.net). The local fixed-level and NPC
+location corrections were introduced and reviewed across several snapshots. See
 [the ForeverDB audit](https://github.com/git-adin/QuestLite/blob/main/QuestLite/ForeverDBAudit.md) and [FOREVERDB_LICENSE.txt](FOREVERDB_LICENSE.txt).
 These compact corrections are included locally; ForeverDB is not a dependency.
 

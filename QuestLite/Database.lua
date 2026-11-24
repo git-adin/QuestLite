@@ -272,6 +272,15 @@ local function Eligible(id, player)
     if Completed(id) then return false end
     if ns.db.filterAvailable == false then return true end
     if PolicyRestricted(id) then return false end
+    if ns.craftsmanWritQuests[id] then
+        local owned=false
+        local starters=Get(id,"startedBy") or {}
+        for _,itemID in ipairs(starters[3] or {}) do
+            local count=safe(C_Item and C_Item.GetItemCount or GetItemCount,itemID,false)
+            if ns.IsFiniteNumber(count) and count>0 then owned=true; break end
+        end
+        if not owned then return false end
+    end
     if MinimumLevel(id) > player.level then return false end
     local maximum = Get(id, "requiredMaxLevel")
     if maximum and maximum > 0 and player.level > maximum then return false end
@@ -488,6 +497,16 @@ function ns.BuildMap(mapID, emit, checkpoint, stateKey)
     end
     local function Pickups(id)
         local starters = Get(id, "startedBy")
+        if ns.craftsmanWritQuests[id] then
+            if ns.db.itemDropLocations then
+                -- A delivery NPC is not an ordinary writ pickup. Keep this a
+                -- labelled reference until the item is used and quest accepted.
+                dropStarter="writ"
+                Givers(Get(id,"finishedBy"),id,"pickup",true)
+                dropStarter=nil
+            end
+            return
+        end
         if ns.zoneDropDestinations[id] and starters and starters[3] and #starters[3]>0
             and not (starters[1] and #starters[1]>0) and not (starters[2] and #starters[2]>0) then
             if not ns.db.itemDropLocations then return end
@@ -690,6 +709,52 @@ function ns.GetPrerequisiteHints(id)
     Walk(id,1)
     if truncated then lines[#lines+1]="Earlier steps may be omitted (route limit reached)." end
     return lines,steps,truncated
+end
+
+-- Direct follow-ups only. Build on demand instead of keeping a second quest
+-- graph in memory. Reverse prerequisites catch links missing nextQuestInChain;
+-- the same native/fallback precedence is used by eligibility and prerequisites.
+function ns.GetNextChainSteps(id)
+    if not quest then return {},false end
+    local player, candidates, seen = Snapshot(), {}, {[id]=true}
+    local limit, total = 20, 0
+    local function Add(other)
+        if type(other)~="number" or other<=0 or seen[other] then return end
+        seen[other]=true
+        local restriction=ns.questRestrictions and ns.questRestrictions[other]
+        if not RaceAllows(Get(other,"requiredRaces"),player.race)
+            or not MaskAllows(Get(other,"requiredClasses"),player.class)
+            or (restriction and not MaskAllows(restriction.requiredClasses,player.class)) then
+            Release(quest,other); return
+        end
+        local name=quest.name(other)
+        if name then
+            total=total+1
+            if #candidates<limit then
+                local active,completed=player.active[other],Completed(other)
+                candidates[#candidates+1]={id=other,name=name,
+                    action=completed and "Completed" or active and (safe(C_QuestLog.IsComplete,other) and "Turn in" or "In quest log") or "Follow-up",
+                    location=(active and "Return to: " or completed and "Original pickup: " or "Pick up: ")..QuestLocation(other,player)}
+            end
+        end
+        Release(quest,other)
+    end
+    Add(Get(id,"nextQuestInChain"))
+    Release(quest,id)
+    local function Contains(ids)
+        for _,other in ipairs(ids or {}) do if math.abs(other)==id then return true end end
+        return false
+    end
+    for _,other in ipairs(quest.GetAllIds()) do
+        if other~=id then
+            local alternatives,group,all,any=PrerequisiteLists(other)
+            if Contains(all) or Contains(any) or Contains(alternatives)
+                or (not (alternatives and #alternatives>0) and Contains(group)) then Add(other) end
+            Release(quest,other)
+        end
+    end
+    table.sort(candidates,function(a,b) return a.id<b.id end)
+    return candidates,total>limit
 end
 
 function ns.FindQuestMatches(query,limit)

@@ -303,7 +303,13 @@ lua.execute(b'''
     guide.db.filterAvailable=false
     assert(not guide.test.Eligible(78270,player),'Broad view restored wrong-class Rogue quest')
     guide.db.filterAvailable=true; player.class=4
-    assert(guide.test.Eligible(78270,player),'Verified Rogue quest was incorrectly removed')
+    local parent=LibQuestieDB.Quest.Get(78270,'parentQuest')
+    if parent and parent>0 then
+        assert(parent==78261,'Unexpected Goblin Lockpicks parent')
+        assert(not guide.test.Eligible(78270,player),'Confirmed offer bypassed the active parent quest')
+        player.active[parent]=true
+    end
+    assert(guide.test.Eligible(78270,player),'Eligible Rogue quest was incorrectly removed')
     player.confirmed={}
     for _,race in ipairs({1,5,95,96}) do
         player.race=race
@@ -311,7 +317,7 @@ lua.execute(b'''
     end
     assert(LibQuestieDB.Quest.Get(78270,'requiredClasses')==rawClass,'Shared provider was changed')
 ''')
-print('Goblin Lockpicks: missing Rogue mask corrected; Hunter/confirmed/broad paths reject it, both-faction Rogues remain eligible.')
+print('Goblin Lockpicks: Rogue mask and active parent honored; both factions remain eligible when requirements pass.')
 lua.execute(b'''
     assert(LibQuestieDB.Enum.raceMaskById[95]==4294967296)
     assert(LibQuestieDB.Enum.raceMaskById[96]==8589934592)
@@ -324,11 +330,14 @@ lua.execute(b'''
     local oldLevel,oldRace,oldClass,oldFaction=UnitLevel,UnitRace,UnitClass,UnitFactionGroup
     UnitLevel=function() return 10 end
     UnitClass=function() return 'Hunter','HUNTER',3 end
+    local tameMask=LibQuestieDB.Quest.Get(94978,'requiredRaces')
+    assert(tameMask==4294967296 or tameMask==12884901888,'Unexpected Skyborne taming race mask')
     for _,race in ipairs({95,96}) do
+        local eligible=race==95 or tameMask==12884901888
         UnitRace=function() return 'Skyborne','Skyborne',race end
         UnitFactionGroup=function() return race==95 and 'Alliance' or 'Horde' end
         local player={active={},skills={},level=10,race=race,class=3,confirmed={}}
-        assert(guide.test.Eligible(94978,player),'Skyborne hunter Taming the Beast hidden '..race)
+        assert(guide.test.Eligible(94978,player)==eligible,'Skyborne taming ignored native race mask '..race)
         local found=false
         guide.BuildMap(mapID,function(id,kind,label,x,y)
             if id==94978 then
@@ -337,14 +346,15 @@ lua.execute(b'''
                 assert(math.abs(x-.5956)<.0001 and math.abs(y-.7263)<.0001)
             end
         end,Checkpoint)
-        assert(found,'Actual Skyborne hunter trainer location not emitted '..race)
+        assert(found==eligible,'Unexpected Skyborne hunter trainer marker '..race)
         for _,pair in ipairs({{94979,94978},{94013,94979},{94050,94013}}) do
             local id,previous=pair[1],pair[2]
             local oldCompleted=completed[previous]; completed[previous]=nil
             player.confirmed={[id]=true}
             assert(not guide.test.Eligible(id,player),'Skyborne future chain step leaked '..id)
             completed[previous]=true
-            assert(guide.test.Eligible(id,player),'Native hunter chain failed to unlock '..id)
+            assert(LibQuestieDB.Quest.Get(id,'requiredRaces')==tameMask,'Unexpected race mask for taming step '..id)
+            assert(guide.test.Eligible(id,player)==eligible,'Native hunter chain ignored race or prerequisite '..id)
             completed[previous]=oldCompleted
         end
         local oldTameCompleted=completed[94978]
@@ -356,9 +366,9 @@ lua.execute(b'''
         guide.BuildMap(mapID,function(id) if id==94007 then referralVisible=true end end,Checkpoint)
         assert(referralVisible,'Completed tame incorrectly removed Elayaa marker')
         completed[94978]=nil; player.confirmed={[94978]=true}; player.active={[94007]=true}
-        assert(guide.test.Eligible(94978,player),'Unlinked referral incorrectly blocked taming')
+        assert(guide.test.Eligible(94978,player)==eligible,'Unlinked referral changed taming eligibility')
         player.active={}; player.confirmed={}
-        assert(guide.test.Eligible(94978,player),'Optional referral became mandatory')
+        assert(guide.test.Eligible(94978,player)==eligible,'Optional referral changed taming eligibility')
         completed[94978]=oldTameCompleted
         assert(LibQuestieDB.Quest.Get(94007,'breadcrumbForQuestId')==0,'Provider breadcrumb was modified')
         player.class=1
@@ -369,9 +379,9 @@ lua.execute(b'''
         assert(not guide.test.Eligible(94978,player),'Hunter quest minimum level bypassed')
     end
     UnitLevel,UnitRace,UnitClass,UnitFactionGroup=oldLevel,oldRace,oldClass,oldFaction
-    assert(LibQuestieDB.Quest.Get(94978,'requiredRaces')==12884901888,'Provider mask was modified')
+    assert(LibQuestieDB.Quest.Get(94978,'requiredRaces')==tameMask,'Provider mask was modified')
 ''')
-print('Skyborne Hunters: actual race IDs 95/96 unlock the trainer marker at 59.56,72.63; native class, level and chain gates preserved.')
+print('Skyborne Hunters: trainer marker at 59.56,72.63 follows the native race mask; class, level and chain gates preserved.')
 print('Skyborne Hunter referral: remains valid after taming starts/completes; no invented breadcrumb restrictions.')
 lua.execute(b'''
     local player={active={},skills={},level=25,race=5,class=2,confirmed={}}
@@ -417,7 +427,7 @@ lua.execute(b'''
         assert(LibQuestieDB.Quest.name(id),'Missing Paladin chain record '..id)
         assert(LibQuestieDB.Quest.Get(id,'requiredClasses')==2,'Paladin mask changed '..id)
         local raceMask=LibQuestieDB.Quest.Get(id,'requiredRaces')
-        local widened=id==91859 or id==91860 or id==91862 or id==96204 or id==95111 or id==95125 or id==95126
+        local widened=id==91858 or id==91859 or id==91860 or id==91862 or id==96204 or id==95111 or id==95125 or id==95126
         assert(raceMask==16 or (widened and raceMask==8589934770),'Unexpected Paladin race mask '..id)
         if index>1 then
             local previous=chain[index-1]
@@ -491,11 +501,13 @@ lua.execute(b'''
         assert(not guide.test.Eligible(id,player),'Earthmother wrong-race offer leaked')
     end
     local modera=LibQuestieDB.Npc.spawns(269127)
-    assert(modera and modera[130] and math.abs(modera[130][1][1]-68.6)<.001
-        and math.abs(modera[130][1][2]-45.1)<.001,'Native Modera location correction missing')
+    assert(modera and modera[130] and math.abs(modera[130][1][1]-68.62)<.05
+        and math.abs(modera[130][1][2]-45.13)<.05,'Native Modera location correction missing')
 ''')
-print('QuestieDB 1.1.3: Neutral reputation boundary, native Raene chain turn-ins, and Tauren-only Earthmother masks verified.')
+print('QuestieDB: Neutral reputation boundary, native Raene chain turn-ins, Tauren-only Earthmother masks and Modera location verified.')
 lua.execute(b'''
+    local rawCompendiumRace=LibQuestieDB.Quest.Get(1049,'requiredRaces')
+    assert(rawCompendiumRace==162 or rawCompendiumRace==8589934754,'Unexpected Compendium native mask')
     local classIDs={1,2,3,4,5,7,8,9,11}
     local raceIDs={1,2,3,4,5,6,7,8,95,96}
     local masks=LibQuestieDB.Enum.raceMaskById
@@ -566,7 +578,7 @@ lua.execute(b'''
     UnitRace=function() return 'Skyborne','Skyborne',95 end
     UnitFactionGroup=function() return 'Alliance' end
     Visible(1456,1049,false)
-    assert(LibQuestieDB.Quest.Get(1049,'requiredRaces')==162,'Compendium native mask mutated')
+    assert(LibQuestieDB.Quest.Get(1049,'requiredRaces')==rawCompendiumRace,'Compendium native mask mutated')
     UnitLevel,UnitRace,UnitClass,UnitFactionGroup=oldLevel,oldRace,oldClass,oldFaction
 ''')
 print(f'Character mask audit: {g[b"characterMaskChecks"]} wrong-class/race rejections across all installed quest records, strict/broad and confirmed offers.')
@@ -789,6 +801,64 @@ lua.execute(b'''
     UnitLevel,active,done=oldLevel,oldActive,oldDone
 ''')
 print('Zone-drop destinations: all three OOX quests and Pendant of Myzrael point to native NPC/object finishers without changing pickup eligibility.')
+lua.execute(b'''
+    local steps,more=guide.GetNextChainSteps(351)
+    local found=false
+    for _,entry in ipairs(steps) do
+        if entry.id==648 then
+            found=true
+            assert(entry.name=='Rescue OOX-17/TN!' and entry.location:find('OOX-17/TN',1,true))
+        end
+    end
+    assert(found and not more,'Actual OOX next quest missing')
+    CheckNativeRequirements(351); CheckNativeRequirements(648)
+    guide.OpenQuestGuide(351,'next')
+    assert(QuestLiteOptions.guideMode=='next' and QuestLiteOptions.rows[1].button:IsShown())
+    QuestLiteOptions:Hide()
+''')
+print('Next-chain guide: actual OOX delivery links to rescue quest with known pickup location; native provider data preserved.')
+lua.execute(b'''
+    local oldItems,oldLevel,oldRace,oldClass,oldFaction=C_Item,UnitLevel,UnitRace,UnitClass,UnitFactionGroup
+    local oldActive,oldDone,oldDrops=active,done,guide.db.itemDropLocations
+    local itemID=LibQuestieDB.Quest.startedBy(94316)[3][1]
+    assert(itemID==264116)
+    local owned=0
+    C_Item={GetItemCount=function(id,bank) assert(bank==false); return id==itemID and owned or 0 end}
+    local player={level=60,race=96,class=3,active={},skills={},skillsKnown=true}
+    local count=0
+    for id in pairs(guide.craftsmanWritQuests) do
+        count=count+1
+        local name=LibQuestieDB.Quest.name(id)
+        assert(name and name:find("Craftsman's Writ:",1,true)==1,'Incorrect writ classification')
+        assert(not guide.test.Eligible(id,player),'Unowned writ advertised as available: '..id)
+        CheckNativeRequirements(id)
+    end
+    assert(count==150)
+    owned=1; assert(guide.test.Eligible(94316,player),'Owned screenshot writ was lost')
+    UnitLevel=function() return 60 end
+    UnitRace=function() return 'Skyborne','Skyborne',96 end
+    UnitClass=function() return 'Hunter','HUNTER',3 end
+    UnitFactionGroup=function() return 'Horde' end
+    active={}; done={}; guide.db.itemDropLocations=true
+    local function Check(wanted,ready)
+        local found=false
+        guide.BuildMap(1447,function(id,kind,label,x,y,confirmed,zone,sx,sy,dropStarter)
+            if id==94316 then
+                found=true
+                assert(label=='Archmage Xylem')
+                assert(kind==(ready and 'turnin' or 'pickup'))
+                assert(ready and dropStarter==nil or not ready and dropStarter=='writ')
+            end
+        end,Checkpoint)
+        assert(found==wanted,'Actual Xylem writ marker incorrect')
+    end
+    Check(true)
+    owned=0; Check(false)
+    active={94316}; done[94316]=true; guide.db.itemDropLocations=false; Check(true,true)
+    C_Item,UnitLevel,UnitRace,UnitClass,UnitFactionGroup=oldItems,oldLevel,oldRace,oldClass,oldFaction
+    active,done,guide.db.itemDropLocations=oldActive,oldDone,oldDrops
+''')
+print('Craftsman writ integration: all 150 require an owned starter in strict mode; actual Xylem reference and ready turn-in verified.')
 if sample_horde:
     lua.execute(b'''
         observed={}; function Collect(id,kind,label,x,y,confirmed)

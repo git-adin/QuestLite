@@ -1,5 +1,73 @@
 # Edge-case audit, 0.2.11
 
+## Craftsman's Writ false NPC pickups - 0.4.25
+
+The user screenshot shows quest 94316 at Archmage Xylem without the writ/quest.
+QuestieDB 1.1.5 records both NPC 8379 and item 264116 as starters, and the same
+NPC as finisher. This mixed-source record bypassed ordinary item-source handling.
+The quest text requires the writ itself for delivery. Explicitly classified all
+150 known English-provider Craftsman's Writ IDs offline; runtime uses IDs and
+the provider's starter item IDs, not localized names or a guessed ID interval.
+
+Strict mode now requires an owned bag starter; unknown inventory does not count
+as ownership. Current server offers retain the existing shortcut. Broad mode
+retains browsable references. Available writs emit labelled delivery references
+with Use writ wording instead of NPC pickups/source swarms. Item-start toggle
+and hidden-quest settings apply; active ready turn-ins remain independent.
+No sourceItemId/provided-item rules or unrelated mixed-source quests are changed.
+Existing BAG_UPDATE_DELAYED invalidation updates both maps and eligibility cache.
+
+Validation: 121 offline regressions, two package tests and both installed-provider
+profiles; all 150 IDs, actual Xylem records, item gain/loss, absent NPC offer,
+unknown inventory, broad view and ready turn-ins covered. Provider rows unchanged.
+Client smoke record: supplied screenshot demonstrates the pre-fix false pickup.
+On November 23, the player verified in Forever 0.4.25 that Xylem's writ was
+absent in strict mode without the item. Live checks for the owned-writ **Use
+writ** marker and the ready turn-in remain pending.
+
+## Next-in-chain navigation - 0.4.24 (2026-11-23)
+
+The quest window has two modes: missing prerequisites and direct follow-ups.
+Next-chain lookup merges the explicit nextQuestInChain field with reverse native
+prerequisite links, using the same native/fallback precedence as eligibility.
+It filters wrong race/class branches, deduplicates explicit/reverse links, avoids
+self links and does not recursively expand cycles. Completed and active quests
+are labelled; unrelated availability gates are not presented as already satisfied.
+
+Only explicit guide access scans the provider. The panel retains one result of
+at most twenty quests, refreshed on quest-state changes and turn-ins; four reused
+UI rows page through it. No global reverse graph, map polling or eligibility
+mutation is introduced. Native provider rows are released after inspection.
+Unknown finisher/pickup data retains the existing unknown-location wording.
+
+119 offline Lua tests and both installed QuestieDB 1.1.5 profiles pass, including
+the actual 351 -> 648 OOX link. Quest 470, Digging Through the Ooze, has no
+recorded direct follow-up. Unit coverage includes branches, local fallback/native
+precedence, unrelated grandchild exclusion, status refresh, row reuse, pagination,
+terminal quests and navigation between modes.
+
+Forever client smoke record: the user's screenshot confirms the existing marker
+opens the guide, with an empty prerequisite list for quest 470. On November 23,
+the player confirmed that **Next in chain** opened correctly in 0.4.25. The
+specific 470 and OOX cases, paging, and window bounds were covered offline.
+
+## Empty item drop-rate section - 0.4.23 (2026-11-22)
+
+ItemTooltip previously added its heading before finding a usable rate, then
+displayed an unknown-data placeholder. It now starts the section only when a
+known NPC rate exists. Items with unknown rates or no NPC sources receive no
+lines, display call or duplicate-token mutation. Known rates, including zero,
+source limits, duplicate protection and inline creature annotations are retained.
+The existing regression now checks that the native name/Soulbound/Unique lines
+remain unchanged across repeated unknown/object-only item callbacks. All 117 Lua
+tests and two packaging tests pass.
+
+Forever client smoke record: the user's 2026-11-22 screenshot reproduces the old
+two-line empty section on Shredder Operating Manual - Chapter 3. Post-fix client
+verification is pending: reload 0.4.23, hover that item and verify only the native
+lines remain; hover a quest item with a known rate and verify its estimate still
+appears. Tooltip hook registration and protected UI behavior are unchanged.
+
 These bugs were reproduced in the offline Lua 5.1 harness before being fixed:
 
 - Closing the world map cleared the shared tooltip even when a minimap icon

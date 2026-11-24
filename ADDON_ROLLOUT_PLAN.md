@@ -2,7 +2,7 @@
 
 ## 1. Establish the release source for each add-on
 
-- Use the existing Git checkout for each add-on as the source for releases. Record the six checkout locations and upstream repositories in a workspace index. Give AuctionPriceLite and WritCrateLite durable checkout locations outside `dist/` so build cleanup cannot remove a checkout.
+- Use the existing Git checkout for each add-on as the source for releases. Record checkout locations and configured upstream repositories in the [workspace index](ADDONS.md). Give AuctionPriceLite and WritCrateLite durable checkout locations outside `dist/` so build cleanup cannot remove a checkout.
 - Compare the loose AuctionPriceLite and WritCrateLite copies with their checkouts and inspect working-tree status. Preserve any local-only changes. Move the combined pricing integration test out of the QuestLite workspace root into the WritCrateLite checkout, with an explicit path to the AuctionPriceLite checkout for the paired run. Keep WritCrateLite's standalone tests runnable without AuctionPriceLite installed.
 - Rebuild the local WritCrateLite stable ZIP from the chosen checkout. Its current workspace copy contains AuctionPriceLite and older WritCrateLite code. Use the matching versioned ZIP as a baseline and keep the previous bundle identifiable until the replacement passes package checks.
 
@@ -16,6 +16,16 @@
 - Roll out to AuctionPriceLite next, adding focused scan and cache tests alongside its packaging checks. Give QuestLite pull-request checks and narrow its ZIP contents. Add CI, tag validation, and package tests to ProfessionGuide. Align HunterLens and ItemFarmingTool where their existing checks differ from the agreed contract.
 
 **Done when** every checkout passes its local build and CI checks, and each verified ZIP extracts directly into `Interface/AddOns/<AddonName>/`. Record a live Forever smoke test for changes involving game APIs, tooltips, combat restrictions, or addon load order.
+
+**Live Forever smoke tests, November 23, 2026.** The player confirmed all five checks for the installed builds.
+
+| Add-on | Verified in game |
+| --- | --- |
+| QuestLite 0.4.23 | Known quest-item drop rates, clean tooltips when no rate is available, and the quest guide opening from a world-map marker. See the [compatibility audit](QuestLite/CompatibilityAudit.md). |
+| AuctionPriceLite 0.3.2 | Full Auction House scan, fresh scan status, item and stack estimates, and expanded tooltip details. |
+| WritCrateLite 0.2.2 | Writ and crate pricing through AuctionPriceLite after the same scan. |
+| ProfessionGuide 0.5.2 | Blacksmithing finishing routes and shopping-list updates when switching alternatives. |
+| HunterLens 0.1.10 | Known beast teaching rank, expanded Shift tooltip, and a clean `/hl debug` check. |
 
 ## 3. Fix ProfessionGuide's farming-goal export
 
