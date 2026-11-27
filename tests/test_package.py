@@ -16,7 +16,7 @@ SOURCE_DIR = "QuestLite"
 EXPECTED = {
     "QuestLite.toc", "Core.lua", "QuestVisibility.lua", "Diagnostics.lua",
     "AvailabilityPolicy.lua", "AvailabilityPolicyData.lua", "ForeverDBCorrections.lua",
-    "Database.lua", "Options.lua", "DropChances.lua", "Map.lua", "Pins.xml",
+    "Database.lua", "Options.lua", "DropChances.lua", "QuestItems.lua", "Map.lua", "Pins.xml",
     "Minimap.lua", "MinimapButton.lua", "SoftTargetCleanup.lua", "LootSparkles.lua",
     "README.md", "LICENSE", "FOREVERDB_LICENSE.txt",
 }

@@ -1,10 +1,77 @@
-# QuestLite 0.4.25
+# QuestLite 0.4.37
 
 The install ZIP includes the game files, player documentation, and required notices. The development audits are available in the source repository.
 
 Download **QuestLite.zip** below and extract it into your WoW Forever
 `_forever_/Interface/AddOns/` folder. The result should be
 `AddOns/QuestLite/QuestLite.toc`.
+
+Fixed in 0.4.37: applied the Remote Contact confirmed-offer rule to Andron
+Gant and Jes'rimon as well as Magatha. Each referral now requires its own
+giver's offer. Actual offers, active turn-ins and broad browsing are retained.
+
+New in 0.4.36: skipped-breadcrumb chat warnings when accepting a destination
+quest, with the missed introduction's name, giver and pickup location.
+Enabled by default under /ql -> Filters. Filters race/class, completed or
+active breadcrumbs, handled alternatives and expired introductions. Uses
+recorded database links; warnings never abandon or modify quests.
+
+Fixed in 0.4.35: Magatha's Remote Contact requires a current server offer
+before advertising a pickup. The guide identifies its Jediga / Stealing
+Knowledge route. No guessed reputation or mandatory prerequisite is added;
+actual offers and active ready turn-ins remain supported.
+
+Fixed in 0.4.34: Xylem's Potion of Demonslaying writ order can be accepted
+without the writ in inventory. It now appears as an ordinary NPC pickup,
+independent of item-started references. Guide text explains that completing
+the order still needs the writ and potion. Other writ orders are unchanged.
+
+Fixed in 0.4.33: the legacy Betrayed tome pickup (3506) and finale (3507)
+require a current server offer instead of appearing beside Forever's rewritten
+Azshara chain. Next-chain guidance omits unaccepted legacy links and retains
+Seals of the Sin'dorei -> An Explosive Gambit -> Revenge Exacted and the
+Sin'dorei Tome of Summoning branch. Existing ready turn-ins are preserved.
+
+Fixed in 0.4.32: Kurll's Deadliest Catch requires Winter Frontier Fishery
+turned in and Fishing skill 1. Added missing Fishing requirements for both
+Winter Frontier Fishery variants. The guide explains the route; no Fishing
+requirement is added to Home on the Range. New native requirements win.
+
+Fixed in 0.4.31: added missing Neutral Timbermaw Hold requirements for 18
+documented Azshara/Blackmaw pickups, including Potential Panacea, Transmuted
+Tincture, Missing Blackmaw Scouts, Blackmaw Reclamation and The Twin Bears.
+The guide explains the reputation gate. Reputation-building introductions
+remain visible; native requirements take precedence.
+
+Fixed in 0.4.30: State Secrets requires a Document Box in your bags before
+advertising a pickup. Applies to Nazgrel, Renzik and Rix Xizzix. The quest
+guide explains how to obtain the box, including buying one; no false mandatory
+rescue-chain prerequisite is added. New native item requirements take precedence.
+
+Fixed in 0.4.29: Oasis no longer advertises a pickup at Tooga's normal spawn.
+Strict mode requires a current NPC offer. The recorded side-quest stop is
+Tanaris 41,54, with guide instructions to lead him there and wait for him to drink.
+Tooga's Quest lists Oasis as a During escort step. His normal escort pickup,
+Torta destination and shared provider data are unchanged.
+
+New in 0.4.28: **Quest item cleanup notes** on bag/item-link tooltips. Shows Keep
+for active, future, repeatable and uncertain quest uses; completed quest-class
+leftovers can show safe to discard for known quests. Non-quest provided items
+get a qualified finished-use note. Normal reward gear is not marked for deletion.
+Enabled by default under `/ql` -> Map. Informational only; no automatic deletion.
+
+Fixed in 0.4.27: refreshed Questie 12.13.0 exclusions and separately classified
+68 unsupported-season quests, including all 54 Duskwood, Hinterlands and Feralas
+Nightmare Incursion missions. Strict mode now blocks these even after cached NPC
+offer observations. Broad browsing identifies them as Season of Discovery.
+Ordinary quests, reused Forever identities and ready turn-ins retain their rules.
+
+Fixed in 0.4.26: hide the Season of Discovery Wild Leather Vest duplicates in
+strict Forever availability mode. These ungated records could advertise a pickup
+while referencing an item absent from the client. The normal Horde/Alliance Wild
+Leather Vest quests retain their native introduction and Leatherworking 225 gates.
+Broad browsing labels the duplicates as Season of Discovery; ready turn-ins remain
+visible if a character actually has one accepted and complete.
 
 Fixed in 0.4.25: Craftsman's Writs no longer advertise their delivery NPC as an
 ordinary pickup. Strict availability requires the writ in your bags or a current

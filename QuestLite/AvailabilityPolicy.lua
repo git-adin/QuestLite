@@ -3,6 +3,55 @@
 -- IDs checked against Questie v12.6.4 QuestieQuestBlacklist.lua (Forever book
 -- HIDE_ON_MAP entries and InvasionQuests). No Questie runtime is required.
 local _, ns = ...
+-- Remote Contact referrals are not offered to the reporting character. The provider
+-- records alternative referrals but no reliable closure condition. Require a
+-- server offer instead of inventing a Stealing Knowledge breadcrumb flag.
+ns.questAvailabilityNotes = {
+    [91734] = "Referral to Jediga and the Stealing Knowledge chain. Availability is conditional; a current offer from Andron Gant is required in available-only mode.",
+    [91735] = "Referral to Jediga and the Stealing Knowledge chain. Availability is conditional; a current offer from Jes'rimon is required in available-only mode.",
+    [91737] = "Referral to Jediga and the Stealing Knowledge chain. Availability is conditional; a current offer from Magatha Grimtotem is required in available-only mode.",
+}
+-- Verified in game without a writ in bags or bank: Xylem offers this order
+-- directly. The writ is still required to complete it. Do not generalize this
+-- observation to every crafting order or every quest from Xylem.
+ns.npcWritPickups = {
+    [94316] = {npc=8379, note="Xylem offers this order without a writ. Completing it still requires the Potion of Demonslaying writ and requested potion."},
+}
+-- Old Classic tail remains in the provider beside Forever's rewritten route.
+-- Keep direct inspection/active quests, but require a real offer for pickups.
+ns.legacyQuestReplacements = {
+    [3506] = {note="Legacy Betrayed step. Forever's route is Seals of the Sin'dorei, then An Explosive Gambit, then Revenge Exacted. The tome also starts Sin'dorei Tome of Summoning."},
+    [3507] = {note="Legacy Betrayed finale. Forever's revised route ends with Revenge Exacted after An Explosive Gambit."},
+}
+-- Firsthand Forever reports confirm Fishing 1 for Winter Frontier Fishery
+-- on both factions and Kurll's Deadliest Catch. No Fishing gate on the hide
+-- introduction, and no inferred gate on the Alliance shark quest.
+local fishing = {skill={356,1}, note="Requires Fishing (skill 1). Route: Home on the Range, then Winter Frontier Fishery, then Deadliest Catch. The squid can be bought."}
+ns.questSkillRequirements = {[89228]=fishing,[91610]=fishing,[91611]=fishing}
+-- Forever Timbermaw quests require Neutral, except the Legashi introduction
+-- and repeatable horns. Explicit IDs from the Timbermaw reputation guide;
+-- native nonempty requirements supersede this missing-field fallback.
+ns.questReputationRequirements = {}
+local timbermaw = {minimum={576,0}, note="Requires Neutral reputation with Timbermaw Hold. Other quest turn-ins may also apply."}
+for _, id in ipairs({86752,86777,86791,86792,86796,86797,86798,86799,86804,
+    86812,86813,86814,86925,86926,86927,87346,92065,92066}) do
+    ns.questReputationRequirements[id] = timbermaw
+end
+-- Document Box is tradeable: owning it unlocks these deliveries, without
+-- requiring this character to complete the Alcaz rescue chain. Native item
+-- requirements take precedence when the provider supplies them.
+local documentBox = {items={274041}, note="Requires a Document Box in your bags: buy one, or finish More Valuable Than Gold (Alcaz Prison chain; Westfall 43.4, 67.8). Personal chain completion is optional."}
+ns.questPickupItemRequirements = {
+    [96376]=documentBox, -- Nazgrel, Horde.
+    [96377]=documentBox, -- Renzik, Alliance.
+    [96379]=documentBox, -- Rix Xizzix, neutral.
+}
+-- Tooga moves during his escort. This per-quest stop must not move his normal
+-- escort pickup or Torta's destination. Availability is confirmed by NPC offers.
+ns.questLocationOverrides = {
+    [97540] = {npc=5955,map=1446,x=41,y=54,parent=1560,
+        note="During Tooga's Quest, lead Tooga to the oasis at 41, 54 and wait for him to drink. Talk to him when he offers Oasis."},
+}
 -- Darkspear Islands battleground mark turn-ins and victory quests. These
 -- Forever records lack native/Questie PvP tags, including zone-less variants.
 -- Explicit IDs avoid localized-title matching or treating every giver as PvP.
@@ -28,6 +77,7 @@ ns.chainAlternativeOverrides = {
     [95288] = {93976, 94928}, -- Smuggler's Paradise: Goblin Trader OR A Few Furs for Friz.
 }
 ns.chainPrerequisiteOverrides = {
+    [91611] = {91610}, -- Kurll: Deadliest Catch follows Winter Frontier Fishery.
     [95183] = {95424}, -- Step One: Rock follows Might Makes Right; that quest follows Land of Giants.
     [93976] = {93788}, -- The Goblin Trader follows Borrowed Blades (Horde).
     [94928] = {94925}, -- A Few Furs for Friz follows A Fur Trade (Alliance).
@@ -79,6 +129,10 @@ ns.characterQuestFieldOverrides = {
 local sodWarrior = {season = "Season of Discovery", requiredClasses = 1,
     label = "Season of Discovery / Warrior"}
 ns.questRestrictions = {
+    -- Questie's SoD phase replaces 2856/2849 with these item-217268 variants.
+    -- They have no native prerequisite/skill gates in the Forever provider.
+    [82656] = {season = "Season of Discovery", label = "Season of Discovery / Leatherworking"},
+    [82657] = {season = "Season of Discovery", label = "Season of Discovery / Leatherworking"},
     [3504] = {label = "NPC offer required"}, -- Betrayed: listed minimum 44, but availability unverified on Forever.
     [80001] = {season = "Season of Discovery", label = "Season of Discovery"}, -- Rekindle; excluded by Questie 12.9.0.
     [79090] = {season = "Season of Discovery", label = "Season of Discovery"}, -- Repelling Invaders.
@@ -122,7 +176,7 @@ ns.zoneDropDestinations = Set({351,485,635,2766}) -- OOX beacons; Pendant of Myz
 ns.pickupPolicy = {
     -- User and independent Forever reports contradict the legacy availability.
     -- Keep the listed level; require an actual offer instead of inventing a gate.
-    offerOnly = Set({3504}),
+    offerOnly = Set({3504,3506,3507,91734,91735,91737,97540}),
     -- Collection bookkeeping creates a false catalog at the library trainers.
     -- The four library milestones are similarly conditional collection entries.
     collection = Set({78124,78127,78142,78143,78145,78146,78147,78148,78149,

@@ -2,7 +2,7 @@
 local addon, ns = ...
 ns.name = addon
 ns.defaults = { map = true, minimap = true, available = true, turnins = true, filterAvailable = true, showLowLevel = false, hidePvPQuests = false, hideClothQuests = false,
-    minimapButton = true, itemDropLocations = true, dropChances = true, enabled = true }
+    minimapButton = true, itemDropLocations = true, dropChances = true, questItemSafety = true, breadcrumbWarnings = true, enabled = true }
 
 function ns.Print(message)
     print("|cff80dfffQuestLite:|r " .. tostring(message))
@@ -65,12 +65,15 @@ function ns.RegisterMapOptions(category)
         {"hideClothQuests", "Hide cloth donation pickups"},
         {"showLowLevel", "Show low level quests"},
         {"dropChances", "Show quest item drop chances"},
+        {"questItemSafety", "Quest item cleanup notes"},
+        {"breadcrumbWarnings", "Warn about skipped breadcrumbs"},
         {"turnins", "Quest turn-ins"} }) do
         local key = row[1]
         local setting = Settings.RegisterAddOnSetting(category, "QUESTLITE_" .. key:upper(),
             key, ns.db, Settings.VarType.Boolean, row[2], ns.defaults[key])
         setting:SetValueChangedCallback(function()
-            if key == "minimapButton" and ns.UpdateMinimapButton then ns.UpdateMinimapButton()
+            if key == "questItemSafety" and ns.RefreshQuestItemSafety then ns.RefreshQuestItemSafety()
+            elseif key == "minimapButton" and ns.UpdateMinimapButton then ns.UpdateMinimapButton()
             elseif ns.RequestMap then ns.RequestMap() end
         end)
         Settings.CreateCheckbox(category, setting, key == "filterAvailable" and
@@ -80,6 +83,8 @@ function ns.RegisterMapOptions(category)
             or key == "showLowLevel" and "Show all low-level pickups, ignoring the normal level cutoff below. Availability requirements still apply. Ready turn-ins stay visible either way."
             or key == "itemDropLocations" and "Show dropped quest starters on both maps: source areas, or known turn-in destinations for zone-wide drops. The dropped item is still required. Turn off to hide these references; NPC pickups, ready turn-ins and drop-rate tooltips are unaffected."
             or key == "dropChances" and "Show source-specific database drop-rate estimates for active quest items in item and creature hover tooltips. Actual Forever server rates may differ."
+            or key == "questItemSafety" and "Show Keep or finished quest-use notes on item tooltips. Checks known quests for this character, including future steps and repeatable turn-ins. Items are never deleted automatically."
+            or key == "breadcrumbWarnings" and "When accepting a quest, warn in chat about known, unaccepted breadcrumb quests you may have skipped, including their pickup locations."
             or key == "minimap" and "Show nearby quest pickups and turn-ins on the minimap. Uses the same availability filter, without objective icons. Works independently of world map markers."
             or key == "minimapButton" and "Show a draggable QuestLite button around the minimap. Click it to open options."
             or "Draw quest locations on the map. Hover for details.")
@@ -108,7 +113,9 @@ events:SetScript("OnEvent", function(self, event, name)
         if ns.InitMinimapButton then ns.InitMinimapButton() end
         local ok, reason = ns.InitDatabase()
         if ok then
+            if ns.InitBreadcrumbWarnings then ns.InitBreadcrumbWarnings() end
             if ns.InitDropChances then ns.InitDropChances() end
+            if ns.InitQuestItems then ns.InitQuestItems() end
             ns.InitMap()
             if ns.InitMinimap then ns.InitMinimap() end
         else ns.Print("Map disabled: " .. tostring(reason)) end

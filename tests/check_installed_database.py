@@ -73,7 +73,7 @@ for file in files:
 
 ns = lua.table()
 ns[b'testing'] = True
-for file in ['Core.lua', 'QuestVisibility.lua', 'Diagnostics.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'ForeverDBCorrections.lua', 'Database.lua', 'Options.lua', 'DropChances.lua', 'MinimapButton.lua']:
+for file in ['Core.lua', 'QuestVisibility.lua', 'Diagnostics.lua', 'AvailabilityPolicy.lua', 'AvailabilityPolicyData.lua', 'ForeverDBCorrections.lua', 'Database.lua', 'Options.lua', 'DropChances.lua', 'QuestItems.lua', 'MinimapButton.lua']:
     lua.execute((ROOT / 'QuestLite' / file).read_bytes(), b'QuestLite', ns)
 g[b'guide'] = ns
 lua.execute(b'''
@@ -830,7 +830,7 @@ lua.execute(b'''
         count=count+1
         local name=LibQuestieDB.Quest.name(id)
         assert(name and name:find("Craftsman's Writ:",1,true)==1,'Incorrect writ classification')
-        assert(not guide.test.Eligible(id,player),'Unowned writ advertised as available: '..id)
+        assert(guide.test.Eligible(id,player)==(id==94316),'Writ pickup classification incorrect: '..id)
         CheckNativeRequirements(id)
     end
     assert(count==150)
@@ -847,18 +847,269 @@ lua.execute(b'''
                 found=true
                 assert(label=='Archmage Xylem')
                 assert(kind==(ready and 'turnin' or 'pickup'))
-                assert(ready and dropStarter==nil or not ready and dropStarter=='writ')
+                assert(dropStarter==nil,'Verified Xylem pickup mislabeled as item-start reference')
             end
         end,Checkpoint)
         assert(found==wanted,'Actual Xylem writ marker incorrect')
     end
     Check(true)
-    owned=0; Check(false)
+    owned=0; guide.db.itemDropLocations=false; Check(true)
     active={94316}; done[94316]=true; guide.db.itemDropLocations=false; Check(true,true)
     C_Item,UnitLevel,UnitRace,UnitClass,UnitFactionGroup=oldItems,oldLevel,oldRace,oldClass,oldFaction
     active,done,guide.db.itemDropLocations=oldActive,oldDone,oldDrops
 ''')
-print('Craftsman writ integration: all 150 require an owned starter in strict mode; actual Xylem reference and ready turn-in verified.')
+print('Craftsman writ integration: 149 retain owned-starter gates; verified Xylem order is an ordinary NPC pickup without a writ, ready turn-in preserved.')
+lua.execute(b'''
+    for _,row in ipairs({{2856,2854,82656,96},{2849,2847,82657,95}}) do
+        local id,intro,duplicate,race=unpack(row)
+        local skill=LibQuestieDB.Quest.Get(id,'requiredSkill')
+        local required=LibQuestieDB.Quest.Get(id,'preQuestSingle')
+        assert(skill[1]==165 and skill[2]==225 and required[1]==intro)
+        assert(not LibQuestieDB.Quest.Get(duplicate,'requiredSkill'))
+        local player={level=60,race=race,class=3,active={},skills={[165]=225},confirmed={[duplicate]=true}}
+        assert(not guide.test.Eligible(duplicate,player),'SoD Wild Leather duplicate leaked')
+        guide.db.filterAvailable=false; assert(guide.test.Eligible(duplicate,player))
+        guide.db.filterAvailable=true
+        local old,oldSkill=completed[intro],C_SkillInfo
+        C_SkillInfo=C_SkillInfo or {}; completed[intro]=nil
+        assert(not guide.test.Eligible(id,player),'Normal Wild Leather prerequisite bypassed')
+        completed[intro]=true; player.skills[165]=224
+        assert(not guide.test.Eligible(id,player),'Normal Wild Leather skill gate bypassed')
+        player.skills[165]=225
+        assert(guide.test.Eligible(id,player),'Normal Wild Leather quest was suppressed')
+        completed[intro],C_SkillInfo=old,oldSkill
+        CheckNativeRequirements(id); CheckNativeRequirements(duplicate)
+    end
+''')
+print('Wild Leather Vest: SoD duplicates excluded in strict mode; actual normal Horde/Alliance prerequisite and Leatherworking 225 gates preserved.')
+lua.execute(b'''
+    local groups={Duskwood=0,Hinterlands=0,Feralas=0}
+    local player={level=60,race=96,class=3,active={},skills={},confirmed={}}
+    for _,id in ipairs(LibQuestieDB.Quest.GetAllIds()) do
+        local name=LibQuestieDB.Quest.name(id) or ''
+        local zone=name:match('^(%a+) Mission [IVX]+:')
+        if groups[zone] then
+            groups[zone]=groups[zone]+1
+            assert(guide.pickupPolicy.sod[id],'Native incursion mission missed '..id)
+            player.confirmed={[id]=true}
+            assert(not guide.test.Eligible(id,player),'Native incursion offer bypassed season rule '..id)
+            assert(guide.GetQuestSummary(id).classification=='Season of Discovery')
+            CheckNativeRequirements(id)
+        end
+        LibQuestieDB.Quest.InvalidateCache(id)
+    end
+    assert(groups.Duskwood==18 and groups.Hinterlands==18 and groups.Feralas==18,'Incursion mission inventory changed')
+    for _,id in ipairs({76156,76160,76240,2849,2856,98251,98252}) do assert(not guide.pickupPolicy.sod[id]) end
+''')
+print('SoD coverage: all 54 Duskwood/Hinterlands/Feralas missions blocked even with confirmed observations; reused Forever quests preserved.')
+lua.execute(b'''
+    local oldRace,oldClass,oldFaction,oldActive,oldDone=UnitRace,UnitClass,UnitFactionGroup,active,done
+    local oldCompleted=completed[54]
+    UnitRace=function() return 'Human','Human',1 end
+    UnitClass=function() return 'Warrior','WARRIOR',1 end
+    UnitFactionGroup=function() return 'Alliance' end
+    active={}; done={}; completed[54]=nil
+    assert(LibQuestieDB.Quest.Get(54,'sourceItemId')==745)
+    assert(LibQuestieDB.Item.Get(745,'class')==12)
+    guide.InitQuestItems()
+    local tip=CreateFrame('GameTooltip'); tip:SetOwner(UIParent,'ANCHOR_NONE')
+    tip:AddLine(LibQuestieDB.Item.name(745))
+    guide.testQuestItems.Tooltip(tip,{id=745}); Tick(1000)
+    assert(#tip.lines==2 and tip.lines[2]:find('Keep:',1,true),'Unfinished real quest item was labelled disposable')
+    completed[54]=true; Fire('QUEST_TURNED_IN',54); Tick(1000)
+    assert(#tip.lines==2 and tip.lines[2]:find('safe to discard for known quests',1,true),'Completed real quest-provided item missed')
+    active={54}; done[54]=true; Fire('QUEST_LOG_UPDATE'); Tick(1000)
+    assert(tip.lines[2]:find('active quest',1,true),'Ready real quest allowed deletion before turn-in')
+    tip:Hide()
+    UnitRace,UnitClass,UnitFactionGroup,active,done=oldRace,oldClass,oldFaction,oldActive,oldDone
+    completed[54]=oldCompleted
+    guide.RefreshQuestItemSafety()
+    CheckNativeRequirements(54)
+''')
+print('Quest cleanup integration: actual Marshal McBride documents stay Keep until Report to Goldshire is turned in; ready quests remain protected.')
+lua.execute(b'''
+    local oldLevel,oldActive,oldDone=UnitLevel,active,done
+    local oldGUID,oldGossip=UnitGUID,C_GossipInfo
+    local oldMain,oldOasis=completed[1560],completed[97540]
+    UnitLevel=function() return 60 end
+    active={}; done={}; completed[1560]=nil; completed[97540]=nil
+    local function Spawns()
+        local rows={}
+        for area,points in pairs(LibQuestieDB.Npc.spawns(5955)) do
+            for _,point in ipairs(points) do rows[#rows+1]=area..':'..point[1]..','..point[2] end
+        end
+        table.sort(rows); return table.concat(rows,';')
+    end
+    local original=Spawns()
+    local function Check(wanted,ready)
+        local found=false
+        guide.BuildMap(1446,function(id,kind,label,x,y)
+            if id==97540 then
+                found=true
+                assert(label=='Tooga' and x==.41 and y==.54,'Oasis location override missed')
+                assert(kind==(ready and 'turnin' or 'pickup'))
+            end
+            if id==1560 and kind=='pickup' then assert(x~=.41 or y~=.54,'Main Tooga spawn moved') end
+        end,Checkpoint)
+        assert(found==wanted,'Oasis appeared without an actual offer')
+    end
+    guide.ClearOfferObservations(); Check(false)
+    active={1560}; Check(false)
+    local steps=guide.GetNextChainSteps(1560)
+    local linked=false
+    for _,entry in ipairs(steps) do
+        if entry.id==97540 then linked=entry.action=='During escort' and entry.location:find('41.0, 54.0',1,true) end
+    end
+    assert(linked,'Oasis escort-stop guide link missing')
+    UnitGUID=function() return 'Creature-0-1-0-0-5955-000001' end
+    C_GossipInfo={GetAvailableQuests=function() return {{questID=97540}} end}
+    assert(guide.ObserveQuestOffers('GOSSIP_SHOW')); Check(true)
+    active={1560,97540}; done[97540]=true; Check(true,true)
+    assert(Spawns()==original,'Shared Tooga spawn data mutated')
+    CheckNativeRequirements(1560); CheckNativeRequirements(97540)
+    UnitLevel,active,done,UnitGUID,C_GossipInfo=oldLevel,oldActive,oldDone,oldGUID,oldGossip
+    completed[1560],completed[97540]=oldMain,oldOasis
+    guide.ClearOfferObservations()
+''')
+print('Oasis integration: offer-confirmed side quest uses Tanaris 41,54 during Tooga escort; shared NPC and prerequisite data preserved.')
+lua.execute(b'''
+    local oldItems=C_Item
+    local owned=0
+    C_Item={GetItemCount=function(id,bank)
+        assert(bank==false); return id==274041 and owned or 0
+    end}
+    local player={level=60,race=96,class=3,active={},skills={},skillsKnown=true}
+    guide.ClearOfferObservations()
+    for _,id in ipairs({96376,96377,96379}) do
+        local q=LibQuestieDB.Quest
+        assert(q.name(id)=='State Secrets')
+        player.race=id==96377 and 1 or 96
+        local was=completed[id]; completed[id]=nil
+        owned=0
+        assert(not guide.test.Eligible(id,player),'State Secrets without Document Box: '..id)
+        owned=1
+        assert(guide.test.Eligible(id,player),'Tradeable Document Box delivery hidden: '..id)
+        owned=nil
+        assert(not guide.test.Eligible(id,player),'Unknown bag count allowed State Secrets')
+        assert(guide.GetQuestSummary(id).availabilityNote:find('Document Box',1,true))
+        CheckNativeRequirements(id)
+        completed[id]=was
+    end
+    C_Item=oldItems
+''')
+print('State Secrets integration: all three native variants require a bag Document Box; buying one works without rescue-chain completion, provider data preserved.')
+lua.execute(b'''
+    local oldRep=C_Reputation
+    local standing=-1
+    C_Reputation={GetFactionDataByID=function(id) assert(id==576); return {currentStanding=standing} end}
+    local p={level=60,race=96,class=3,active={},skills={},skillsKnown=true}
+    local count=0
+    for id in pairs(guide.questReputationRequirements) do
+        count=count+1
+        assert(LibQuestieDB.Quest.name(id),'Unknown Timbermaw correction ID')
+        CheckNativeRequirements(id)
+    end
+    assert(count==18 and not guide.questReputationRequirements[86746]
+        and not guide.questReputationRequirements[86747])
+    for _,id in ipairs({86813,86812,86791,92065,92066}) do
+        local was=completed[id]; completed[id]=nil
+        standing=-1; assert(not guide.test.Eligible(id,p),'Hostile Timbermaw pickup leaked: '..id)
+        standing=0; assert(guide.test.Eligible(id,p),'Neutral Timbermaw quest hidden: '..id)
+        assert(guide.GetQuestSummary(id).availabilityNote:find('Neutral reputation',1,true))
+        completed[id]=was
+    end
+    C_Reputation=oldRep
+''')
+print('Timbermaw integration: 18 documented Neutral requirements, all five screenshot quests checked across the boundary; native rows and reputation-building introductions preserved.')
+lua.execute(b'''
+    local oldHome,oldFish,oldShark=completed[91488],completed[91610],completed[91611]
+    completed[91488],completed[91610],completed[91611]=nil,nil,nil
+    local p={level=60,race=96,class=3,active={},skills={[356]=1},skillsKnown=true}
+    assert(LibQuestieDB.Quest.name(91611)=='Deadliest Catch')
+    assert(not guide.test.Eligible(91611,p),'Kurll shark quest skipped prerequisite')
+    completed[91488]=true
+    assert(guide.test.Eligible(91610,p),'Kurll squid quest missing after hide turn-in')
+    p.active[91610]=true
+    assert(not guide.test.Eligible(91611,p),'Accepted squid quest unlocked shark quest')
+    p.active[91610]=nil; completed[91610]=true
+    assert(guide.test.Eligible(91611,p),'Fishing 1 and squid turn-in did not unlock shark quest')
+    p.skills={}; assert(not guide.test.Eligible(91611,p),'Kurll pickup without Fishing')
+    assert(guide.GetQuestSummary(91611).availabilityNote:find('Fishing (skill 1)',1,true))
+    for _,id in ipairs({89228,91488,91610,91611}) do CheckNativeRequirements(id) end
+    completed[91488],completed[91610],completed[91611]=oldHome,oldFish,oldShark
+''')
+print('Kurll integration: Home on the Range -> Winter Frontier Fishery -> Deadliest Catch; Fishing 1 and prerequisite turn-in required, provider data preserved.')
+lua.execute(b'''
+    local oldA,oldB,oldC=completed[3505],completed[3506],completed[3507]
+    local oldActive,oldDone,oldRace=active,done,UnitRace
+    completed[3505],completed[3506],completed[3507]=true,nil,nil
+    active={}; done={}; UnitRace=function() return 'Skyborne','Skyborne',96 end
+    local p={level=60,race=96,class=3,active={},skills={},skillsKnown=true}
+    assert(not guide.test.Eligible(3506,p),'Legacy tome pickup leaked')
+    local steps=guide.GetNextChainSteps(3505)
+    local found=false
+    for _,row in ipairs(steps) do
+        assert(row.id~=3506,'Legacy Betrayed reverse link leaked')
+        if row.id==91497 then found=true end
+    end
+    assert(found,'Revised Seals of the Sindorei route missing')
+    steps=guide.GetNextChainSteps(91497)
+    local gambit,tome=false,false
+    for _,row in ipairs(steps) do
+        if row.id==91500 then gambit=true end
+        if row.id==91538 then tome=true end
+    end
+    assert(gambit and tome,'Screenshot branch missing from revised chain')
+    completed[3506]=true; assert(not guide.test.Eligible(3507,p),'Legacy finale leaked')
+    for _,id in ipairs({3505,3506,3507,91497,91500,91531,91538,91547}) do CheckNativeRequirements(id) end
+    completed[3505],completed[3506],completed[3507]=oldA,oldB,oldC
+    active,done,UnitRace=oldActive,oldDone,oldRace
+''')
+print('Betrayed integration: legacy 3506/3507 hidden as unconfirmed pickups; revised Seals -> Gambit plus Tome branch retained, native data preserved.')
+lua.execute(b'''
+    local oldA,oldB,oldC=completed[91734],completed[91735],completed[91737]
+    completed[91734],completed[91735],completed[91737]=nil,nil,nil
+    local p={level=60,race=96,class=3,active={},skills={},skillsKnown=true}
+    local names={[91734]='Andron Gant',[91735]="Jes'rimon",[91737]='Magatha Grimtotem'}
+    local found=0
+    for _,id in ipairs(LibQuestieDB.Quest.GetAllIds()) do
+        if LibQuestieDB.Quest.name(id)=='Remote Contact' then
+            assert(names[id],'Unhandled Remote Contact variant: '..id); found=found+1
+            p.confirmed=nil
+            assert(not guide.test.Eligible(id,p),'Unconfirmed Remote Contact leaked: '..id)
+            p.confirmed={[id]=true}
+            assert(guide.test.Eligible(id,p),'Actual referral offer was lost: '..id)
+            assert(guide.GetQuestSummary(id).availabilityNote:find(names[id],1,true))
+        end
+    end
+    assert(found==3)
+    for _,id in ipairs({91734,91735,91737,3517,3518}) do CheckNativeRequirements(id) end
+    completed[91734],completed[91735],completed[91737]=oldA,oldB,oldC
+''')
+print('Remote Contact integration: all three native variants require current offers; actual offers restore pickups, alternatives and Jediga prerequisites remain native.')
+lua.execute(b'''
+    guide.InitBreadcrumbWarnings()
+    local sample,rows
+    for _,id in ipairs(LibQuestieDB.Quest.GetAllIds()) do
+        if LibQuestieDB.Quest.Get(id,'breadcrumbs') then
+            local found=guide.GetSkippedBreadcrumbs(id)
+            if #found>0 then sample,rows=id,found; break end
+        end
+        LibQuestieDB.Quest.InvalidateCache(id)
+    end
+    assert(sample,'No applicable native breadcrumb warning fixture')
+    local old=guide.db.breadcrumbWarnings
+    guide.db.breadcrumbWarnings=true
+    local before=#messages
+    Fire('QUEST_ACCEPTED',1,sample)
+    assert(#messages>before,'Native breadcrumb acceptance produced no warning')
+    assert(messages[before+1]:find(rows[1].name,1,true))
+    assert(messages[before+1]:find(rows[1].location,1,true))
+    CheckNativeRequirements(sample)
+    for _,row in ipairs(rows) do CheckNativeRequirements(row.id) end
+    guide.db.breadcrumbWarnings=old
+''')
+print('Breadcrumb warning integration: actual applicable native breadcrumb warns on QUEST_ACCEPTED with name and pickup location; provider data unchanged.')
 if sample_horde:
     lua.execute(b'''
         observed={}; function Collect(id,kind,label,x,y,confirmed)
