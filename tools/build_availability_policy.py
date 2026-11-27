@@ -63,6 +63,16 @@ for id, flag in blacklist.InvasionQuests.items():
 # ordinary hidden-quest or holiday tables. Include signets and supply turn-ins.
 aq_ids = {int(id) for id, flag in blacklist.AQWarEffortQuests.items() if flag and id in present}
 hidden.update(aq_ids)
+# Only explicit non-SoD exclusions are authoritative here. Do not import rune
+# or phase membership wholesale: Forever reuses some of those quest identities.
+sod_entries = re.findall(r'^\s*\[(\d+)\]\s*=\s*not\s+Questie\.IsSoD\b', source, re.M)
+sod_conditions = [line for line in source.splitlines()
+                  if re.search(r'\bnot\s+Questie\.IsSoD\b', line.split('--', 1)[0])]
+assert len(sod_entries) == len(sod_conditions), 'Unreviewed non-SoD exclusion format'
+sod_ids = {int(id) for id in sod_entries
+           if int(id) in present}
+assert sod_ids, 'Missing explicit non-SoD exclusions; review upstream format'
+assert sod_ids <= hidden, 'Explicit SoD exclusions were not evaluated as hidden'
 # Holiday quest files contain data registrations only; no calendar UI is loaded.
 event_ids = set()
 holiday_groups = {}
@@ -138,12 +148,14 @@ lines = ['-- SPDX-License-Identifier: GPL-3.0-or-later',
          f'-- Source: installed Questie v{questie_version}; QuestieDB Forever v{database_version}',
          '-- QuestieQuestBlacklist.lua SHA256: ' + hashlib.sha256(source.encode()).hexdigest(),
          '-- Classic/Forever context only; other-expansion branches are not imported.',
-         '-- Seasonal/hidden entries can be restored by an explicit server offer.',
+         '-- Conditional entries can be restored by an offer; unsupported seasons stay hidden.',
          'local _, ns = ...', 'ns.pickupPolicy.hidden = {']
 ids = sorted(hidden)
 for start in range(0, len(ids), 12):
     lines.append('    ' + ','.join(f'[{id}]=true' for id in ids[start:start + 12]) + ',')
-lines += ['}', 'ns.pickupPolicy.eventSorts = {' + ','.join(f'[{id}]=true' for id in sorted(event_sorts)) + '}',
+lines += ['}', '-- Unsupported-season exclusions cannot be restored by cached NPC offers.',
+          'ns.pickupPolicy.sod = {' + ','.join(f'[{id}]=true' for id in sorted(sod_ids)) + '}',
+          'ns.pickupPolicy.eventSorts = {' + ','.join(f'[{id}]=true' for id in sorted(event_sorts)) + '}',
           'ns.pickupPolicy.aq = {' + ','.join(f'[{id}]=true' for id in sorted(aq_ids)) + '}',
           'ns.pickupPolicy.hiddenGivers = {' + ','.join(f'[{id}]=true' for id in hidden_givers) + '}',
           'ns.professionRankSpells = {']
@@ -159,6 +171,7 @@ lines += ['}', '']
 output = ROOT / 'QuestLite/AvailabilityPolicyData.lua'
 output.write_text('\n'.join(lines), encoding='utf-8')
 print(f'{len(hidden)} applicable hidden/conditional quest IDs; {len(event_ids)} holiday IDs; {len(list(ranks.items()))} profession rank tables')
+print(f'{len(sod_ids)} explicit non-SoD exclusions classified separately')
 print(f'{len(aq_ids)} AQ War Effort/commendation quests included as a separate event category')
 print(f'{len(holiday_groups)} holiday registration files and {len(event_sorts)} database event categories checked; newly covered IDs: {new_category_ids}')
 print(f'{len(hidden_givers)} applicable NPC display exclusions; Wrath achievement examples in Forever DB: {len(present.intersection({14101,14102,14104,14105,14107,14108}))}')
@@ -190,7 +203,8 @@ report += ['', '## Previously missed category entries', '',
            '- Runtime filtering checks the composed quest category too, covering new quests in reviewed event categories after a DB update.',
            '- Persistent battlegrounds, class/profession sorts, raid zones, and ordinary campaigns are not treated as temporary holidays.',
            '- Anniversary and Pirates Day appear in reference comments, but have no separate registered quest list in this installed version. Categorized seasonal entries remain covered.',
-           '- No SoD-only Blackrock Eruption or Nightmare Incursion quest categories occur in the installed Forever data; their realm-specific phase assumptions are not imported.',
+           f'- {len(sod_ids)} explicit non-SoD exclusions are classified separately and cannot be restored by cached NPC offers. This includes Nightmare Incursion missions, even when they use ordinary zone categories.',
+           '- SoD rune/phase lists are not blanket exclusions: Forever reuses some quest identities. Only explicit non-SoD exclusions and individually verified season records are imported.',
            '- This verifies all event groups found in these local references and metadata, not unknown server-only events with no IDs or event tags.',
            '- Strict mode still requires a current NPC offer for event pickups. Automatic calendar/realm activation is not implemented; use the broad view to browse events beforehand.', '']
 (ROOT / 'QuestLite/EventCoverage.md').write_text('\n'.join(report), encoding='utf-8')

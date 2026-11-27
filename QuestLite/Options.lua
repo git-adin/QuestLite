@@ -27,7 +27,8 @@ function ns.SetOption(key, value)
         value = math.max(0, math.min(80, math.floor(value)))
     elseif ns.defaults[key] == nil or type(value) ~= "boolean" then return end
     ns.db[key] = value
-    if key == "enabled" and ns.SetLootSparklesEnabled then ns.SetLootSparklesEnabled(value)
+    if key == "questItemSafety" and ns.RefreshQuestItemSafety then ns.RefreshQuestItemSafety()
+    elseif key == "enabled" and ns.SetLootSparklesEnabled then ns.SetLootSparklesEnabled(value)
     elseif key == "minimapButton" and ns.UpdateMinimapButton then ns.UpdateMinimapButton()
     elseif ns.RequestMap then ns.RequestMap() end
     if panel and panel:IsShown() then Render() end
@@ -95,12 +96,14 @@ local function GetPanel()
     Check(map, "minimapButton", "Minimap options button", "Drag the button around the minimap.", 356, -148)
     Check(map, "dropChances", "Quest item drop chances", "Database estimates in item and creature tooltips.", 356, -214)
     Check(map, "enabled", "Quest loot sparkles", "Switching off needs a full game restart.", 356, -280)
+    Check(map, "questItemSafety", "Quest item cleanup notes", "Keep or finished-use notes; never auto-deletes items.", 356, -346)
     Text(map, "Click a quest marker to view its quest chain. Right-click to hide an individual pickup.", nil, 24, -444)
     local filters = panel.pages.filters
     Text(filters, "Choose the pickups you want to see", "GameFontNormalLarge", 24, -112)
     Check(filters, "filterAvailable", "Only available quests", "Check known level, faction, class and quest requirements.", 24, -148)
     Check(filters, "hidePvPQuests", "Hide PvP pickups", "Battleground and other known PvP quests.", 24, -224)
     Check(filters, "hideClothQuests", "Hide cloth donations", "Capital reputation and repeatable runecloth quests.", 24, -300)
+    Check(filters, "breadcrumbWarnings", "Warn about skipped breadcrumbs", "Chat warning with the breadcrumb's pickup location.", 24, -376)
     Check(filters, "itemDropLocations", "Show item-started quests", "Dropped quest starters: source areas or known zone-drop destinations.", 356, -148)
     Check(filters, "showLowLevel", "Show all low-level quests", "Ignore the normal lower-level cutoff.", 356, -224)
     Text(filters, "Normal lower-level cutoff", "GameFontNormal", 356, -308, 260)
@@ -184,7 +187,6 @@ Render = function()
         local status=completed and "Quest already completed." or active and "In your quest log. Return here when the objectives are complete."
             or (#entries>0 and "Complete required steps; choose one when marked Alternative. Click a step for details."
                 or (#hints>0 and table.concat(hints,"\n") or "No missing quest turn-ins found. Other requirements may still apply."))
-        if not active and not completed and summary.availabilityNote then status=summary.availabilityNote end
         if panel.guideMode=="next" then
             local key=panel.selected..":"..ns.GetMapStateKey(true)
             if panel.chainKey~=key then
@@ -195,6 +197,7 @@ Render = function()
             status=#entries>0 and "Known direct follow-ups. Other requirements may apply. Click a quest for its chain."
                 or "No known follow-up quests in the database."
         end
+        if not active and not completed and summary.availabilityNote then status=summary.availabilityNote end
         panel.guideInfo:SetText(ns.GetQuestLevelDescription(panel.selected).."\n"..location.."\n"..status)
         panel.routeKey=ns.GetMapStateKey(true)
     else

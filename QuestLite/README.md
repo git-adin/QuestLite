@@ -1,6 +1,89 @@
-# QuestLite 0.4.25
+# QuestLite 0.4.37
 
-Known Craftsman's Writs require their starter item in your bags in **Only available
+**Skipped breadcrumb warnings:** when you accept a destination quest, QuestLite
+warns in chat about known breadcrumb introductions you have not accepted or
+completed, with their giver and pickup location. Enabled by default; toggle
+under `/ql` -> **Filters** -> **Warn about skipped breadcrumbs**. Wrong-race,
+wrong-class, unsupported-season and already-handled alternative introductions
+are excluded. Warnings use recorded database links, so missing links cannot
+be detected. At most five references are shown, once per destination per
+session within a bounded recent-history cache. QuestLite does not abandon quests.
+
+**Remote Contact:** all three referrals (Andron Gant, Jes'rimon and Magatha)
+require a current offer from their own giver in available-only mode. Guide
+notes identify each giver and the Jediga / Stealing Knowledge route. Accepted
+referrals and ready turn-ins remain visible. Broad browsing can inspect them.
+
+**Xylem's Potion of Demonslaying order:** you can accept this quest directly
+from Archmage Xylem without owning the writ. You still need the writ and
+requested potion to complete it. QuestLite now shows an ordinary NPC pickup,
+independent of the item-started location toggle. The quest guide explains this
+distinction. Other writ orders retain their current checks.
+
+**Betrayed in Azshara:** the old tome pickup and finale are legacy entries.
+Available-only mode requires a real server offer for them. The guide follows
+Seals of the Sin'dorei -> An Explosive Gambit -> Revenge Exacted, with the
+separate Sin'dorei Tome of Summoning branch. Active legacy turn-ins remain
+visible, and direct inspection explains the revised route.
+
+**Kurll / Deadliest Catch:** learn Fishing (skill 1 is enough), turn in
+Home on the Range, then turn in Winter Frontier Fishery. The squid can be
+bought from other players. Available-only mode checks Fishing and the missing
+shark-quest prerequisite; the quest guide includes the route.
+
+**Timbermaw reputation:** pickup markers for the 18 documented Azshara and
+Blackmaw quests require **Neutral with Timbermaw Hold** in available-only mode.
+The quest guide explains the reputation requirement. The Legashi Threat and
+Legashi Horns remain available for building reputation. Gaining reputation
+refreshes both maps; other quest prerequisites may still apply.
+
+**State Secrets:** all three deliveries require a Document Box in your bags.
+Buy one from another player, or obtain it through More Valuable Than Gold
+(the Alcaz Prison rescue chain, then Westfall 43.4, 67.8). The guide explains
+this item requirement; completing the rescue chain yourself is optional.
+
+**Oasis / Tooga:** during Tooga's Quest, lead him to the oasis in Tanaris at
+**41, 54** and wait for him to drink, then talk to him. Strict mode shows Oasis
+only after a current NPC offer confirms it. Its recorded pickup/turn-in stop
+uses the oasis coordinates, not Tooga's normal spawn. The quest guide includes
+the instructions and lists Oasis under **During escort** in Tooga's next-chain
+view. This is a conditional stop, not a prerequisite requiring the escort to be
+turned in. Broad browsing still shows the recorded stop beforehand.
+
+## Quest item cleanup notes
+
+Hover a quest item in your bags or an item link to check its known quest uses
+for this character. **Quest item cleanup notes** is enabled by default under
+`/ql` -> **Map**.
+
+- **Keep**: an active quest, unfinished future quest, repeatable/daily turn-in,
+  or unresolved quest information still needs consideration. Finishing objectives
+  does not count as turning the quest in.
+- **Quest leftover: safe to discard for known quests**: every known applicable
+  use is completed and no repeatable use remains. This applies to quest-class
+  items, including leftovers originally supplied by quests.
+- **Quest use finished; this item may have other uses**: a provided item is not
+  strictly a quest item, or teaches a spell. Quest completion alone does not
+  establish that it has no other value.
+
+Ordinary quest reward gear gets no deletion recommendation. Unknown items without
+enough quest-use evidence are left unmarked. These notes describe QuestieDB's
+known uses, not a guarantee about unrecorded server quests, collections or other
+uses. Items are never deleted automatically. Known container/conversion links
+are followed; incomplete conversion chains stay conservative. Character
+class/race and unsupported-season identities are respected.
+
+The check runs on demand in small background batches, caching at most 64 item
+results. Quest-state changes invalidate old advice, and visible notes update
+without adding duplicate lines. There is no permanent second full quest index.
+
+**Only available quests** excludes known Season of Discovery quests in Forever,
+including Nightmare Incursion missions. Explicit unsupported-season exclusions
+stay hidden even after an NPC offer observation. Broad browsing keeps their
+**Season of Discovery** label; actual ready turn-ins remain visible. These rules
+use verified IDs, not title matching or blanket exclusion of reused quest IDs.
+
+Other known Craftsman's Writs require their starter item in your bags in **Only available
 quests** mode, unless a current NPC offer confirms availability. Their delivery
 NPCs are not advertised as ordinary pickups: unaccepted writs use a **Use writ**
 reference, reminding you to use the item first. Bag changes refresh both maps.

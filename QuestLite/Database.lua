@@ -53,6 +53,14 @@ local function Get(id, field)
     row = ns.characterQuestFieldOverrides and ns.characterQuestFieldOverrides[id]
     correction = row and row[field]
     if correction and value == correction.was then return correction.value end
+    if field == "requiredMinRep" and (not value or not next(value)) then
+        local rule = ns.questReputationRequirements[id]
+        if rule then return rule.minimum end
+    end
+    if field == "requiredSkill" and (not value or not next(value)) then
+        local rule = ns.questSkillRequirements[id]
+        if rule then return rule.skill end
+    end
     return value
 end
 
@@ -118,7 +126,7 @@ local function RepPass(requirement, minimum)
     local data = C_Reputation and safe(C_Reputation.GetFactionDataByID, requirement[1])
     local standing = data and data.currentStanding
     if standing == nil and GetFactionInfoByID then standing = select(6, GetFactionInfoByID(requirement[1])) end
-    if standing == nil then return false end
+    if not ns.IsFiniteNumber(standing) then return false end
     if minimum then return standing >= requirement[2] end
     return standing < requirement[2]
 end
@@ -249,6 +257,7 @@ local function Eligible(id, player)
     if ns.db.hidePvPQuests and ns.IsPvPQuest(id) then return false end
     if ns.db.hideClothQuests and ns.clothDonationQuests[id] then return false end
     local restriction = ns.questRestrictions and ns.questRestrictions[id]
+    if ns.db.filterAvailable and ns.pickupPolicy.sod and ns.pickupPolicy.sod[id] then return false end
     if restriction then
         if not MaskAllows(restriction.requiredClasses, player.class) then return false end
         -- Unsupported-season records are not ordinary event candidates. An old
@@ -272,7 +281,16 @@ local function Eligible(id, player)
     if Completed(id) then return false end
     if ns.db.filterAvailable == false then return true end
     if PolicyRestricted(id) then return false end
-    if ns.craftsmanWritQuests[id] then
+    local itemRule = ns.questPickupItemRequirements[id]
+    if itemRule then
+        local items = Get(id, "requiredSourceItems")
+        if not items or not next(items) then items = itemRule.items end
+        for _, itemID in ipairs(items) do
+            local count = safe(C_Item and C_Item.GetItemCount or GetItemCount, itemID, false)
+            if not ns.IsFiniteNumber(count) or count <= 0 then return false end
+        end
+    end
+    if ns.craftsmanWritQuests[id] and not ns.npcWritPickups[id] then
         local owned=false
         local starters=Get(id,"startedBy") or {}
         for _,itemID in ipairs(starters[3] or {}) do
@@ -303,6 +321,8 @@ local function Eligible(id, player)
     if untilID and Completed(untilID) then return false end
     if not ChainRequirementsPass(id, player) then return false end
     local skill = Get(id, "requiredSkill")
+    if skill and ns.questSkillRequirements[id]
+        and (not ns.IsFiniteNumber(player.skills[skill[1]]) or player.skills[skill[1]] < skill[2]) then return false end
     if skill and C_SkillInfo and (player.skillsKnown ~= false or player.skills[skill[1]])
         and (player.skills[skill[1]] or 0) < skill[2] then return false end
     if not RanksPass(Get(id, "requiredRanks")) then return false end
@@ -457,7 +477,10 @@ function ns.BuildMap(mapID, emit, checkpoint, stateKey)
         end
         local spawns = entity.spawns(entityID)
         local label = fallback or entity.name(entityID)
-        Spawns(spawns, id, kind, label, confirmed)
+        local place=ns.questLocationOverrides and ns.questLocationOverrides[id]
+        if place and entity==api.Npc and entityID==place.npc then
+            Location(place.map,id,kind,label,place.x,place.y,confirmed)
+        else Spawns(spawns, id, kind, label, confirmed) end
         local observed = entity == api.Npc and ns.npcLocationFallbacks and ns.npcLocationFallbacks[entityID]
         if observed and (not spawns or not next(spawns)) then
             Location(observed.map, id, kind, label, observed.x, observed.y, confirmed)
@@ -497,6 +520,11 @@ function ns.BuildMap(mapID, emit, checkpoint, stateKey)
     end
     local function Pickups(id)
         local starters = Get(id, "startedBy")
+        local npcWrit = ns.npcWritPickups[id]
+        if npcWrit then
+            Givers({{npcWrit.npc}},id,"pickup")
+            return
+        end
         if ns.craftsmanWritQuests[id] then
             if ns.db.itemDropLocations then
                 -- A delivery NPC is not an ordinary writ pickup. Keep this a
@@ -565,9 +593,16 @@ function ns.GetQuestSummary(id)
         local minimum = Get(id, "requiredLevel")
         summaries[id] = {name = quest.name(id) or ("Quest #" .. id), level = Get(id, "questLevel") or 0,
             minimumLevel = MinimumLevel(id), minimumKnown = type(minimum)=="number" and minimum>0,
-            availabilityNote = ns.pickupPolicy.offerOnly and ns.pickupPolicy.offerOnly[id]
+            availabilityNote = ns.questLocationOverrides and ns.questLocationOverrides[id] and ns.questLocationOverrides[id].note
+                or ns.questPickupItemRequirements[id] and ns.questPickupItemRequirements[id].note
+                or ns.questReputationRequirements[id] and ns.questReputationRequirements[id].note
+                or ns.questSkillRequirements[id] and ns.questSkillRequirements[id].note
+                or ns.legacyQuestReplacements[id] and ns.legacyQuestReplacements[id].note
+                or ns.npcWritPickups[id] and ns.npcWritPickups[id].note
+                or ns.questAvailabilityNotes[id]
+                or ns.pickupPolicy.offerOnly and ns.pickupPolicy.offerOnly[id]
                 and "Availability is unverified. A current NPC offer is required in strict mode." or nil,
-            classification = restriction and restriction.label,
+            classification = restriction and restriction.label or ns.pickupPolicy.sod and ns.pickupPolicy.sod[id] and "Season of Discovery",
             repeatable = bit.band(Get(id, "specialFlags") or 0, 1) ~= 0}
         summaryCount = summaryCount + 1
         Release(quest, id)
@@ -618,6 +653,14 @@ end
 
 local function QuestLocation(other, player)
         local active = player.active[other]
+        local place=ns.questLocationOverrides and ns.questLocationOverrides[other]
+        if place then
+            local info=safe(C_Map and C_Map.GetMapInfo,place.map)
+            local name=api.Npc.name(place.npc) or "Tooga"
+            Release(api.Npc,place.npc)
+            return string.format("%s - %s %.1f, %.1f (escort oasis stop)",
+                name,info and info.name or ("Map "..place.map),place.x,place.y)
+        end
         local givers = Get(other, active and "finishedBy" or "startedBy") or {}
         for index, entity in ipairs({api.Npc, api.Object}) do
             for _, entityID in ipairs(givers[index] or {}) do
@@ -647,12 +690,85 @@ local function QuestLocation(other, player)
         return active and "turn-in location unknown" or "pickup location unknown"
     end
 
+-- Acceptance warnings use explicit reverse breadcrumb lists, as Questie does.
+-- Do not infer lost quests from ordinary prerequisites or title/series matches.
+function ns.GetSkippedBreadcrumbs(id)
+    if not quest then return {},false end
+    local player,rows,seen=Snapshot(),{},{}
+    local breadcrumbs=Get(id,"breadcrumbs") or {}
+    local more=false
+    for index,other in ipairs(breadcrumbs) do
+        if index>128 then more=true; break end
+        if ns.IsFiniteNumber(other) and other>0 and other==math.floor(other) and other~=id and not seen[other] then
+            seen[other]=true
+            local valid=not player.active[other] and not Completed(other) and ns.QuestAppliesToCharacter(other)==true
+            if valid then
+                local untilID=Get(other,"availableUntilCompleted")
+                if untilID and untilID>0 and Completed(untilID) then valid=false end
+                for _,exclusive in ipairs(Get(other,"exclusiveTo") or {}) do
+                    if player.active[exclusive] or Completed(exclusive) then valid=false; break end
+                end
+            end
+            if valid then
+                if #rows<5 then
+                    rows[#rows+1]={id=other,name=quest.name(other),location=QuestLocation(other,player)}
+                else more=true end
+            end
+            Release(quest,other)
+        end
+    end
+    Release(quest,id)
+    return rows,more
+end
+
+local breadcrumbEvents
+function ns.InitBreadcrumbWarnings()
+    if breadcrumbEvents then return end
+    local warned,order={},{}
+    breadcrumbEvents=CreateFrame("Frame")
+    breadcrumbEvents:RegisterEvent("QUEST_ACCEPTED")
+    breadcrumbEvents:SetScript("OnEvent",function(_,event,index,id)
+        if not ns.db.breadcrumbWarnings then return end
+        if ns.IsSecret(id) then return end
+        -- Forever's standard event passes log index then quest ID. Older clients
+        -- may omit the ID; resolve the log index instead of guessing it is an ID.
+        if id==nil and ns.IsFiniteNumber(index) then
+            local info=safe(C_QuestLog.GetInfo,index)
+            id=info and not info.isHeader and info.questID
+        end
+        if not ns.IsFiniteNumber(id) or id<=0 or id~=math.floor(id) or warned[id] then return end
+        local rows,more=ns.GetSkippedBreadcrumbs(id)
+        if #rows==0 then return end
+        warned[id]=true; order[#order+1]=id
+        if #order>64 then warned[table.remove(order,1)]=nil end
+        local name=ns.GetQuestSummary(id).name
+        for _,row in ipairs(rows) do
+            ns.Print("Possible skipped breadcrumb for ["..name.."]: ["..row.name.."] (#"..row.id.."). Pickup: "..row.location..". Accepting the destination quest may make this referral unavailable.")
+        end
+        if more then ns.Print("More breadcrumb references omitted; check the quest database for other introductions.") end
+    end)
+end
+
 function ns.GetQuestLocation(id)
     if not quest then return "Quest database unavailable" end
     local player=Snapshot()
     local text=QuestLocation(id,player)
     Release(quest,id)
     return text,player.active[id],Completed(id)
+end
+
+-- Quest item retention checks consider future quests too, but not other-race,
+-- other-class or explicitly unsupported-season records from the shared DB.
+function ns.QuestAppliesToCharacter(id)
+    if not quest or not quest.name(id) then return nil end
+    local restriction=ns.questRestrictions and ns.questRestrictions[id]
+    local result=not (restriction and restriction.season)
+        and not (ns.pickupPolicy.sod and ns.pickupPolicy.sod[id])
+        and RaceAllows(Get(id,"requiredRaces"),select(3,UnitRace("player")))
+        and MaskAllows(Get(id,"requiredClasses"),select(3,UnitClass("player")))
+        and not (restriction and not MaskAllows(restriction.requiredClasses,select(3,UnitClass("player"))))
+    Release(quest,id)
+    return result
 end
 
 -- Called only for Shift details or explicit chat lookup; no full graph/index cache.
@@ -721,6 +837,7 @@ function ns.GetNextChainSteps(id)
     local function Add(other)
         if type(other)~="number" or other<=0 or seen[other] then return end
         seen[other]=true
+        if ns.legacyQuestReplacements[other] and not player.active[other] and not Completed(other) then return end
         local restriction=ns.questRestrictions and ns.questRestrictions[other]
         if not RaceAllows(Get(other,"requiredRaces"),player.race)
             or not MaskAllows(Get(other,"requiredClasses"),player.class)
@@ -732,14 +849,17 @@ function ns.GetNextChainSteps(id)
             total=total+1
             if #candidates<limit then
                 local active,completed=player.active[other],Completed(other)
+                local place=ns.questLocationOverrides and ns.questLocationOverrides[other]
                 candidates[#candidates+1]={id=other,name=name,
-                    action=completed and "Completed" or active and (safe(C_QuestLog.IsComplete,other) and "Turn in" or "In quest log") or "Follow-up",
+                    action=completed and "Completed" or active and (safe(C_QuestLog.IsComplete,other) and "Turn in" or "In quest log")
+                        or place and place.parent==id and "During escort" or "Follow-up",
                     location=(active and "Return to: " or completed and "Original pickup: " or "Pick up: ")..QuestLocation(other,player)}
             end
         end
         Release(quest,other)
     end
     Add(Get(id,"nextQuestInChain"))
+    for other,place in pairs(ns.questLocationOverrides or {}) do if place.parent==id then Add(other) end end
     Release(quest,id)
     local function Contains(ids)
         for _,other in ipairs(ids or {}) do if math.abs(other)==id then return true end end

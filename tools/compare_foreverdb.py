@@ -86,11 +86,12 @@ for table_key, mode in ((b'chainPrerequisiteOverrides', 'all'), (b'chainAlternat
             'native_group': ids(quest.Get(qid, b'preQuestGroup')), 'forever_sequence': int(row[8]) if row else None})
 for qid, encoded in sorted(forever[b'qfQuests'].items()):
     row = fields(encoded)
-    if len(row) not in (10, 11):
+    if len(row) not in (10, 11, 12, 13):
         raise ValueError(f'Unsupported ForeverDB quest row schema for {qid}: {len(row)} fields')
     title, level, minimum, _, starts, ends, witnesses, new, previous, _ = row[:10]
-    # 0.58 adds an inferred faction hint. It is not an authoritative restriction.
-    side_hint = row[10] if len(row) == 11 else ''
+    # Inferred side is optional. The later offer-floor and class observations
+    # do not change the indexes used for this report.
+    side_hint = row[10] if len(row) >= 11 else ''
     common = {'id': qid, 'title': title or string(quest.name(qid)) or f'Quest {qid}', 'witnesses': int(witnesses), 'new': new == '1', 'inferred_side': side_hint}
     if qid not in known:
         report['missing_quests'].append(common | {'starts': starts, 'ends': ends,

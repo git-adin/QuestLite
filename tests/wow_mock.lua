@@ -55,7 +55,12 @@ function methods:SetBackdropBorderColor() end
 function methods:SetClampedToScreen() end
 function methods:SetWidth() end
 function methods:SetOwner(owner,anchor) self.owner=owner; self.anchor=anchor; self.lines={} end
-function methods:AddLine(text) self.lines[#self.lines+1]=text end
+function methods:AddLine(text)
+    self.lines[#self.lines+1]=text
+    local index=#self.lines
+    self['TextLeft'..index]={GetText=function() return self.lines[index] end,
+        SetText=function(_,value) self.lines[index]=value end,SetTextColor=function() end}
+end
 function methods:AddDoubleLine(left,right) self.lines[#self.lines+1]=left..'  '..right end
 function methods:NumLines() return #(self.lines or {}) end
 function AddNativeTooltipLine(tooltip,text)
