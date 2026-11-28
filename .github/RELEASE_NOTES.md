@@ -1,10 +1,14 @@
-# QuestLite 0.4.37
+# QuestLite 0.4.38
 
 The install ZIP includes the game files, player documentation, and required notices. The development audits are available in the source repository.
 
 Download **QuestLite.zip** below and extract it into your WoW Forever
 `_forever_/Interface/AddOns/` folder. The result should be
 `AddOns/QuestLite/QuestLite.toc`.
+
+Updated in 0.4.38: regenerated availability from Questie 12.15.0 and QuestieDB
+Forever 1.1.6. Seven additional quest exclusions, eight Season of Discovery
+classifications and one quest-tag correction.
 
 Fixed in 0.4.37: applied the Remote Contact confirmed-offer rule to Andron
 Gant and Jes'rimon as well as Magatha. Each referral now requires its own
