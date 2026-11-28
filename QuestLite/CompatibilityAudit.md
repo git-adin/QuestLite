@@ -379,3 +379,12 @@ installed build matched the package on disk. The player confirmed the live
 Forever smoke test on November 23: `/ql status` showed 0.4.23, known quest-item
 drops displayed NPC rates, an item without a known NPC rate showed no empty
 section, and a world-map marker opened its quest guide.
+
+## Questie 12.15.0 and QuestieDB 1.1.6 (0.4.38)
+
+Regenerated the bundled policy against the installed Forever sources. The
+new policy adds seven exclusions, eight Season of Discovery classifications,
+and one quest-tag correction. The standalone ForeverDB 0.77.3 comparison was
+also run. Its additional level, giver, location and sequence differences
+remain review candidates. Live verification of the updated exclusion list is
+pending.

@@ -1,4 +1,4 @@
-# QuestLite 0.4.37
+# QuestLite 0.4.38
 
 **Skipped breadcrumb warnings:** when you accept a destination quest, QuestLite
 warns in chat about known breadcrumb introductions you have not accepted or

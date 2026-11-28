@@ -1,6 +1,6 @@
-# Event coverage audit - 0.4.27
+# Event coverage audit - 0.4.38
 
-Checked against the installed Questie v12.13.0 and QuestieDB Forever v1.1.5.
+Checked against the installed Questie v12.15.0 and QuestieDB Forever v1.1.6.
 Counts overlap across lists and database categories; they are not additive.
 
 ## Separate event lists
@@ -60,7 +60,7 @@ The composed-database check identifies 98977 (Mossheart the Elder),
 - Runtime filtering checks the composed quest category too, covering new quests in reviewed event categories after a DB update.
 - Persistent battlegrounds, class/profession sorts, raid zones, and ordinary campaigns are not treated as temporary holidays.
 - Anniversary and Pirates Day appear in reference comments, but have no separate registered quest list in this installed version. Categorized seasonal entries remain covered.
-- 68 explicit non-SoD exclusions are classified separately and cannot be restored by cached NPC offers. This includes Nightmare Incursion missions, even when they use ordinary zone categories.
+- 76 explicit non-SoD exclusions are classified separately and cannot be restored by cached NPC offers. This includes Nightmare Incursion missions, even when they use ordinary zone categories.
 - SoD rune/phase lists are not blanket exclusions: Forever reuses some quest identities. Only explicit non-SoD exclusions and individually verified season records are imported.
 - This verifies all event groups found in these local references and metadata, not unknown server-only events with no IDs or event tags.
 - Strict mode still requires a current NPC offer for event pickups. Automatic calendar/realm activation is not implemented; use the broad view to browse events beforehand.
